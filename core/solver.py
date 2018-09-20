@@ -273,7 +273,6 @@ class ParagraphSolver(object):
 
                 # write summary for tensorboard visualization
                 # if e % 10 == 0:
-                
                 # summary = sess.run(summary_op, feed_dict)
                 # summary_writer.add_summary(summary, e)
 
