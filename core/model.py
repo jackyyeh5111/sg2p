@@ -28,7 +28,7 @@ class Regions_Hierarchical():
                        encoder_lstm_dim=512, 
                        dropout=True,
                        ctx2out=True,
-                       selector=True):
+                       selector=False):
 
             self.vocab_size = len(word2idx)
             self.pad_idx = word2idx["<pad>"]
@@ -70,22 +70,17 @@ class Regions_Hierarchical():
             self.regionPooling_b = tf.Variable(tf.zeros([project_dim]), name='regionPooling_b')
 
             # sentence LSTM
-            # with tf.device('/gpu:1'):
-            # with tf.variable_scope('sent_LSTM'):
-            #     sent_LSTM = BasicLSTMCell(self.feats_dim, self.sentRNN_lstm_dim)
-            #     self.sent_LSTM = sent_LSTM.create_recurrent_unit()  
-            
-            # self.sent_LSTM = tf.contrib.rnn.BasicLSTMCell(sentRNN_lstm_dim, state_is_tuple=True)
+            self.sent_LSTM = tf.contrib.rnn.BasicLSTMCell(sentRNN_lstm_dim, state_is_tuple=True)
 
             # logistic classifier
-            self.logistic_Theta_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, 2], -0.1, 0.1), name='logistic_Theta_W')
+            self.logistic_Theta_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, 2], -0.1, 0.1), name='logistic_Theta_W')
             self.logistic_Theta_b = tf.Variable(tf.zeros(2), name='logistic_Theta_b')
 
             # fc1_W: 512 x 1024, fc1_b: 1024
             # fc2_W: 1024 x 1024, fc2_b: 1024
-            self.fc1_W = tf.Variable(tf.random_uniform([feats_dim+wordRNN_lstm_dim, 2048], -0.1, 0.1), name='fc1_W')
-            self.fc1_b = tf.Variable(tf.zeros(2048), name='fc1_b')
-            self.fc2_W = tf.Variable(tf.random_uniform([2048, wordRNN_lstm_dim*2], -0.1, 0.1), name='fc2_W')
+            self.fc1_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, sentRNN_FC_dim], -0.1, 0.1), name='fc1_W')
+            self.fc1_b = tf.Variable(tf.zeros(sentRNN_FC_dim), name='fc1_b')
+            self.fc2_W = tf.Variable(tf.random_uniform([sentRNN_FC_dim, wordRNN_lstm_dim*2], -0.1, 0.1), name='fc2_W')
             self.fc2_b = tf.Variable(tf.zeros(wordRNN_lstm_dim*2), name='fc2_b')
 
             self.label_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, self.label_size], -0.1, 0.1), name='label_W')
@@ -100,7 +95,6 @@ class Regions_Hierarchical():
             #     word_cells.append(word_cell)
                 
             # self.word_LSTM = tf.contrib.rnn.MultiRNNCell(cells=word_cells, state_is_tuple=True)
-            # with tf.device('/gpu:1'):
             self.word_LSTM = tf.contrib.rnn.BasicLSTMCell(wordRNN_lstm_dim, state_is_tuple=True)
 
             self.embed_word_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, self.vocab_size], -0.1,0.1), name='embed_word_W')
@@ -111,21 +105,19 @@ class Regions_Hierarchical():
 
 
             # placeholder
-            # with tf.device('/gpu:1'):
             self.densecap_feats = tf.placeholder(tf.float32, [None, self.num_boxes, self.feats_dim])
 
-                # receive the [continue:0, stop:1] lists
-                # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
+            # receive the [continue:0, stop:1] lists
+            # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
             self.num_distribution = tf.placeholder(tf.int32, [None, self.S_max])
 
             # receive the ground truth words, which has been changed to idx use word2idx function
             self.captions = tf.placeholder(tf.int32, [None, self.S_max, self.N_max+1])
+            self.coco_captions = tf.placeholder(tf.int32, [None, 1, self.N_max+1])
 
             # self.caption_labels = tf.placeholder(tf.int32, [None, self.S_max, self.label_size])
 
-            # with tf.device('/cpu:0'):
             self.embed_initializer = tf.constant_initializer(pretrained_embed_matrix)
-
 
             self.Wemb = tf.get_variable("embedding",
                                         # 0,1,2 for pad sos eof respectively.
@@ -180,20 +172,25 @@ class Regions_Hierarchical():
             return x
 
     def _decode_lstm(self, h, context, dropout=False, reuse=False):
+        # h.shape (batch_size, time_steps, hidden_cell_sizes)
+        # context.shape (batch_size, 4096)
         with tf.variable_scope('logits', reuse=reuse):
             w_h = tf.get_variable('w_h', [self.H, self.H], initializer=self.weight_initializer)
             b_h = tf.get_variable('b_h', [self.H], initializer=self.const_initializer)
             w_out = tf.get_variable('w_out', [self.H, self.H], initializer=self.weight_initializer)
             b_out = tf.get_variable('b_out', [self.H], initializer=self.const_initializer)
 
+            # print h
+
             if dropout:
                 h = tf.nn.dropout(h, 0.5)
 
-            h_logits = tf.matmul(h, w_h) + b_h
+            h_logits = tf.matmul(h, w_h) + b_h # (batch_size, time_steps, hidden_cell_sizes)
 
             if self.ctx2out:
                 w_ctx2out = tf.get_variable('w_ctx2out', [self.D, self.H], initializer=self.weight_initializer)
                 h_logits += tf.matmul(context, w_ctx2out)
+                # h_logits += tf.expand_dims(tf.matmul(context, w_ctx2out), 1) 
 
             # if self.prev2out:
             #     h_logits += x
@@ -201,11 +198,11 @@ class Regions_Hierarchical():
 
             if dropout:
                 h_logits = tf.nn.dropout(h_logits, 0.5)
+
             out_logits = tf.matmul(h_logits, w_out) + b_out
             return out_logits
 
     def _batch_norm(self, x, mode='train', name=None, reuse=None):
-
         return tf.contrib.layers.batch_norm(inputs=x,
                                             decay=0.95,
                                             center=True,
@@ -218,109 +215,101 @@ class Regions_Hierarchical():
 
 
     def _project_features(self, features, reuse=None):
-        
         with tf.variable_scope('project_features', reuse=reuse):
             w = tf.get_variable('w', [self.D, self.D], initializer=self.weight_initializer)
             features_flat = tf.reshape(features, [-1, self.D])
             features_proj = tf.matmul(features_flat, w)
             features_proj = tf.reshape(features_proj, [-1, self.L, self.D])
-            return features_proj    
+            return features_proj
 
             
-    def build_model(self):
+    def build_model(self, S_max, semi=False, reuse=False):
 
         features = self.densecap_feats # (50, 4096)
 
-        captions_masks = tf.to_float(tf.not_equal(self.captions, self.pad_idx))
-        captions_labels_masks = tf.to_float(tf.not_equal(self.num_distribution, self.pad_idx))
+        if semi == True:
+            captions = self.coco_captions
+        else:
+            captions = self.captions
+
+        captions_masks = tf.to_float(tf.not_equal(captions, self.pad_idx))
+        captions_length = tf.reduce_sum(captions_masks, 2)
+        
+        # captions_labels_masks = tf.to_float(tf.not_equal(self.num_distribution, self.pad_idx))
 
         # batch normalize feature vectors
-        # with tf.device('/gpu:1'):
-        features = self._batch_norm(features, mode='train', name='dense_features')
+        features = self._batch_norm(features, mode='train', name='dense_features', reuse=reuse)
 
-        word_c, word_h = self._get_initial_lstm(features=features)
+        c, h = self._get_initial_lstm(features=features, reuse=reuse)
         # x = self._word_embedding(inputs=captions_in)
-        features_proj = self._project_features(features=features)
+        features_proj = self._project_features(features=features, reuse=reuse)
 
         
         loss = 0.0
-        loss_sent = 0.0
+        loss_sent = tf.constant(0.0)
         loss_word = 0.0
         loss_label = tf.constant(0.0)
         lambda_sent = 5.0
-        lambda_word = 1.0
+        lambda_word = 2.0
 
         alpha_list = []
+        # reviewer_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.encoder_lstm_dim)
+       
         print 'Start build model:'
         with tf.variable_scope(tf.get_variable_scope()) as scope:
-            for i in range(0, self.S_max):
-                
-                context, alpha = self._attention_layer(features, features_proj, word_h, reuse=(i!=0))
+            for i in range(0, S_max):
+                    
+                context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
                 alpha_list.append(alpha)
 
                 if self.selector:
-                    context, beta = self._selector(context, word_h, reuse=(i!=0))
+                    context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
-                # with tf.device('/gpu:1'):
-                #     with tf.variable_scope('sent_LSTM', reuse=(i!=0)):
-                #         _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
+            
+                with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
+                    _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
 
-                # with tf.device('/gpu:1'):
-                #     sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=(i!=0))
-
-                # with tf.name_scope('fc1'):
-                #     hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
-                # with tf.name_scope('fc2'):
-                #     sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
-
-                # sent loss
-                sentRNN_logistic_mu = tf.nn.xw_plus_b( word_h, self.logistic_Theta_W, self.logistic_Theta_b )
-                sentRNN_label = tf.stack([ 1 - self.num_distribution[:, i], self.num_distribution[:, i] ])
-                sentRNN_label = tf.transpose(sentRNN_label)
-                sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=sentRNN_logistic_mu, labels=sentRNN_label)
-                sentRNN_loss = tf.reduce_sum(sentRNN_loss)/self.batch_size
-                loss += sentRNN_loss * lambda_sent
-                loss_sent += sentRNN_loss
-                    
-
-                # wordRNN state
-                # topic = tf.contrib.rnn.LSTMStateTuple(sent_topic_vec[:, 0:self.wordRNN_lstm_dim], sent_topic_vec[:, self.wordRNN_lstm_dim:])
-                # word_c, word_h = [topic] * self.wordRNN_numlayer
-                # word_c, word_h = topic
-                # print context
-                # print word_c
-                # print tf.concat([context, word_c], 1)
-                # raw_input()
+                sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
 
                 with tf.name_scope('fc1'):
-                    hidden1 = tf.nn.relu( tf.matmul(tf.concat([context, word_c], 1), self.fc1_W) + self.fc1_b )
+                    hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
                 with tf.name_scope('fc2'):
                     sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
 
+                # sent loss
+                if semi == False:
+                    with tf.name_scope('sent_loss'):
+                        sentRNN_logistic_mu = tf.nn.xw_plus_b( sent_output, self.logistic_Theta_W, self.logistic_Theta_b )
+                        sentRNN_label = tf.stack([ 1 - self.num_distribution[:, i], self.num_distribution[:, i] ])
+                        sentRNN_label = tf.transpose(sentRNN_label)
+                        sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=sentRNN_logistic_mu, labels=sentRNN_label)
+                        sentRNN_loss = tf.reduce_sum(sentRNN_loss)/self.batch_size
+                        loss += sentRNN_loss * lambda_sent
+                        loss_sent += sentRNN_loss
+                        
+
+                # wordRNN state
                 topic = tf.contrib.rnn.LSTMStateTuple(sent_topic_vec[:, 0:self.wordRNN_lstm_dim], sent_topic_vec[:, self.wordRNN_lstm_dim:])
+                # word_c, word_h = [topic] * self.wordRNN_numlayer
                 word_c, word_h = topic
 
-                # tf.concat(context, c, 1)
 
                 for j in range(0, self.N_max):
                     if j > 0:
                         tf.get_variable_scope().reuse_variables()
 
-                    with tf.device('/cpu:0'):
-                        current_embed = tf.nn.embedding_lookup(self.Wemb, self.captions[:, i, j])
+               
+                    current_embed = tf.nn.embedding_lookup(self.Wemb, captions[:, i, j])
 
-                    # with tf.device('/gpu:1'):
-                    #     with tf.variable_scope('word_attention'):
-                    #         context, alpha = self._attention_layer(features, features_proj, word_h, reuse=(j!=0))
                     # print "current_embed:", current_embed
 
-                    # with tf.device('/gpu:1'):
+                    
                     with tf.variable_scope('word_LSTM', reuse=(j!=0)):
-                        word_output, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
+                        _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
 
-                    word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=(j!=0))
+                    word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=True)
 
-                    labels = tf.reshape(self.captions[:, i, j+1], [-1, 1])
+                    labels = tf.reshape(captions[:, i, j+1], [-1, 1])
                     indices = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1])
                     concated = tf.concat([indices, labels], 1)
                     onehot_labels = tf.sparse_to_dense(concated, tf.stack([self.batch_size, self.vocab_size]), 1.0, 0.0)
@@ -328,26 +317,25 @@ class Regions_Hierarchical():
                     
                     # At each timestep the hidden state of the last LSTM layer is used to predict a distribution
                     # over the words in the vocbulary
-                    logit_words = tf.nn.xw_plus_b(word_output[:], self.embed_word_W, self.embed_word_b)
-                    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
-                    cross_entropy = cross_entropy * captions_masks[:, i, j]
-                    loss_wordRNN = tf.reduce_sum(cross_entropy) / self.batch_size
-                    loss += loss_wordRNN * lambda_word
-                    loss_word += loss_wordRNN
+                    with tf.name_scope('word_loss'):
+                        logit_words = tf.nn.xw_plus_b(word_output[:], self.embed_word_W, self.embed_word_b)
+                        cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
+                        cross_entropy = cross_entropy * captions_masks[:, i, j]
+                        loss_wordRNN = tf.reduce_sum(cross_entropy) / self.batch_size
+                        loss += loss_wordRNN * lambda_word
+                        loss_word += loss_wordRNN
 
         return loss, loss_sent, loss_label, loss_word
 
-       
     
     def build_sampler(self, reuse):
 
         features = self.densecap_feats # (50, 4096)
 
         # batch normalize feature vectors
-        # with tf.device('/gpu:1'):
         features = self._batch_norm(features, mode='test', name='dense_features', reuse=reuse)
 
-        word_c, word_h = self._get_initial_lstm(features=features, reuse=reuse)
+        c, h = self._get_initial_lstm(features=features, reuse=reuse)
         # x = self._word_embedding(inputs=captions_in)
         features_proj = self._project_features(features=features, reuse=reuse)
 
@@ -366,42 +354,36 @@ class Regions_Hierarchical():
             if reuse == True:
                 tf.get_variable_scope().reuse_variables()
             
-            context, alpha = self._attention_layer(features, features_proj, word_h, reuse=reuse or (i!=0))
+            context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
             alpha_list.append(alpha)
 
             if self.selector:
-                context, beta = self._selector(context, word_h, reuse=reuse or (i!=0))
+                context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
 
-            # with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
-            #     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
+            with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
+                _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
 
-            # sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
+            sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
 
-            # with tf.name_scope('fc1'):
-            #     hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
-            # with tf.name_scope('fc2'):
-            #     sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
-
-
-            # pred_re
-            sentRNN_logistic_mu = tf.nn.xw_plus_b(word_h, self.logistic_Theta_W, self.logistic_Theta_b)
-            pred = tf.nn.softmax(sentRNN_logistic_mu)
-            pred_re.append(pred)
-
-
-            # # save the generated sentence to list, named generated_sent
-            generated_sent = []
             with tf.name_scope('fc1'):
-                    hidden1 = tf.nn.relu( tf.matmul(tf.concat([context, word_c], 1), self.fc1_W) + self.fc1_b )
+                hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
             with tf.name_scope('fc2'):
                 sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
 
+            
+            sentRNN_logistic_mu = tf.nn.xw_plus_b(sent_output, self.logistic_Theta_W, self.logistic_Theta_b)
+            pred = tf.nn.softmax(sentRNN_logistic_mu)
+            pred_re.append(pred)
 
+            # save the generated sentence to list, named generated_sent
+            generated_sent = []
+
+            # wordRNN state
             topic = tf.contrib.rnn.LSTMStateTuple(sent_topic_vec[:, 0:self.wordRNN_lstm_dim], sent_topic_vec[:, self.wordRNN_lstm_dim:])
+            # word_c, word_h = [topic] * self.wordRNN_numlayer
             word_c, word_h = topic
-
-
+                
             # word RNN, unrolled to N_max time steps
             for j in range(0, self.N_max):
                 if j > 0:
@@ -411,11 +393,10 @@ class Regions_Hierarchical():
                     # get word embedding of BOS (index = 0)
                     current_embed = tf.nn.embedding_lookup(self.Wemb, tf.fill([tf.shape(self.densecap_feats)[0]], self.start_idx) )
 
-                # with tf.device('/gpu:1'):
                 with tf.variable_scope('word_LSTM', reuse=reuse or (j!=0)):
-                    word_output, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
+                    _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
 
-                word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=reuse or (j!=0))
+                word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=True)
 
                 logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
                 

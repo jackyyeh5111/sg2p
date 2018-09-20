@@ -9,6 +9,8 @@ import sys
 # print 'cwd (before):', os.getcwd()
 os.chdir('/2t/jackyyeh/im2p/core') # for batch inference
 from evaluate import evaluate
+from data_loader import SemiTrainingData, TrainingData
+import tensorflow.contrib.slim as slim
 # from bleu import evaluate
 
 tf_config = tf.ConfigProto()
@@ -18,16 +20,19 @@ tf_config.gpu_options.allow_growth = True
 class ParagraphSolver(object):
     def __init__(self, model, data, config, opts):
 
-        self.save_every = 20
+        self.save_every = 2
         self.early_stop_epoch = 10
         self.early_stop = opts.early_stop
 
-
+        self.config = config
         self.model = model
         self.process_name = opts.process_name
         self.pretrained_model = opts.model_name
         self.data = data
         self.fixed_n_sent = opts.fixed_n_sent
+        self.semi_dense_feats_files = config.semi_dense_feats_files
+        self.semi_captions_files = config.semi_captions_files
+        self.transfered_model_name = opts.transfered_model_name
         
         self.T_stop = config.T_stop
         self.n_epoch = config.n_epoch
@@ -38,6 +43,16 @@ class ParagraphSolver(object):
         self.model_path = os.path.join(config.model_dir, self.process_name)
         self.result_path = os.path.join(config.result_dir, self.process_name)
         self.update_rule = config.update_rule
+
+
+        # get pretrained_epoch
+        if self.pretrained_model is not None:
+            self.pretrained_epoch = int(self.pretrained_model.split('-')[1] )
+            self.log_file = "log_" + self.pretrained_model + ".txt"
+        else:
+            self.pretrained_epoch = 0
+            self.log_file = "log.txt" 
+        
 
         # set an optimizer by update rule
         if self.update_rule == 'adam':
@@ -67,6 +82,22 @@ class ParagraphSolver(object):
             print "Start training with pretrained Model.."
             saver.restore(sess, os.path.join(self.model_path, self.pretrained_model) )
                     
+
+        elif self.transfered_model_name is not None:
+
+            variables = slim.get_variables_to_restore()
+            variables_to_restore = [v for v in variables \
+                if "label" not in v.name 
+                and "logistic_Theta" not in v.name
+                and "beta" not in v.name ] 
+            
+            saver_restore = tf.train.Saver(variables_to_restore)
+
+            print "Start training with pretrained Model.."
+            saver_restore.restore(sess, self.transfered_model_name )
+            
+            saver = tf.train.Saver(max_to_keep=max_to_keep) 
+
         return sess, saver
 
 
@@ -89,19 +120,9 @@ class ParagraphSolver(object):
         output_paragraphs(totol_paragraphs, output_path)
 
 
-    def train(self):
-        
-        # build graphs for training model and sampling captions
-        # This scope fixed things!!
-        with tf.variable_scope(tf.get_variable_scope()):
-            loss, loss_sent, loss_label, loss_word = self.model.build_model()
-            sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
-    
-        # train op
-        with tf.variable_scope(tf.get_variable_scope(), reuse=False):
-            
-            max_gradient_norm=1.0
-
+    def backprop(self, loss, reuse=False, max_gradient_norm=5.0):
+        with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
+            # Calculate and clip gradients
             params = tf.trainable_variables()
             gradients = tf.gradients(loss, params)
             clipped_gradients, _ = tf.clip_by_global_norm( gradients, max_gradient_norm )
@@ -110,103 +131,157 @@ class ParagraphSolver(object):
             optimizer = self.optimizer(learning_rate=self.learning_rate)
             train_op = optimizer.apply_gradients( zip(clipped_gradients, params) )
 
-            # optimizer = self.optimizer(learning_rate=self.learning_rate)
-            # grads = tf.gradients(loss, tf.trainable_variables())
-            # grads_and_vars = list(zip(grads, tf.trainable_variables()))
-            # train_op = optimizer.apply_gradients(grads_and_vars=grads_and_vars)
+        return train_op
 
-
-        train_data = self.data.train_data
-        num_batch = train_data.num_batch
-       
-
-        # summary op
-        # tf.scalar_summary('batch_loss', loss)
-        # tf.summary.scalar('batch_loss', loss)
-        # tf.summary.scalar('batch_loss_label', loss_label)
-        # tf.summary.scalar('batch_loss_word', loss_word)
-        # for var in tf.trainable_variables():
-        #     #tf.histogram_summary(var.op.name, var)
-        #     tf.summary.histogram(var.name, var)
-        # for grad, var in grads_and_vars:
-        #     #tf.histogram_summary(var.op.name+'/gradient', grad)
-        #     try:
-        #         tf.summary.histogram(var.name+'/gradient', grad)
-        #     except:
-        #         print var.name
-
-        #summary_op = tf.merge_all_summaries()
-        # summary_op = tf.summary.merge_all()
-
-        print "The number of epoch: %d" % self.n_epoch
-        print "Data size: %d" % train_data.size
-        print "Batch size: %d" % self.batch_size
-        print "Iterations per epoch: %d" % num_batch
+    def summary_scalars(self, tf_vars):
+        tf.summary.scalar('loss', tf_vars["loss"])
+        tf.summary.scalar('loss_sent', tf_vars["loss_sent"])
+        tf.summary.scalar('loss_word', tf_vars["loss_word"])
+        tf.summary.scalar('loss_label', tf_vars["loss_label"])
+        tf.summary.scalar('s_loss', tf_vars["s_loss"])
+        tf.summary.scalar('s_loss_word', tf_vars["s_loss_word"])
         
+
+    def model_summary(self):
+        print "-" * 50 + '\n'
+        model_vars = tf.trainable_variables()
+        slim.model_analyzer.analyze_vars(model_vars, print_info=True)
+        print "-" * 50 + '\n'
+
+    def run_epoch(self, sess, train_data, loss_dict, tf_vars, semi=False):
+
+        train_data.reset_pointer()
+
+        for i in range(train_data.num_batch):
+            batch_data = train_data.next_batch()
+
+            if semi == True:
+                feed_dict = {
+                     self.model.densecap_feats: batch_data["densecap_feats"],
+                     self.model.coco_captions: batch_data["captions"],
+                     # self.model.caption_labels: batch_data["caption_labels"],
+                }
+
+                _, _loss, _loss_label, _loss_word = sess.run(
+                    [tf_vars["s_train_op"], 
+                     tf_vars["s_loss"], 
+                     tf_vars["s_loss_label"], 
+                     tf_vars["s_loss_word"]], feed_dict)
+
+            else:
+                feed_dict = {
+                     self.model.densecap_feats: batch_data["densecap_feats"],
+                     self.model.num_distribution: batch_data["num_distribution"],
+                     self.model.captions: batch_data["captions"],
+                     # self.model.caption_labels: batch_data["caption_labels"],
+                }
+            
+                _, _loss, _loss_sent, _loss_label, _loss_word = sess.run(
+                    [tf_vars["train_op"], 
+                     tf_vars["loss"], 
+                     tf_vars["loss_sent"], 
+                     tf_vars["loss_label"], 
+                     tf_vars["loss_word"]], feed_dict)
+
+
+                loss_dict["total_sent_loss"] += _loss_sent
+
+            loss_dict["total_loss"] += _loss
+            loss_dict["total_label_loss"] += _loss_label
+            loss_dict["total_word_loss"] += _loss_word
+            
+        return loss_dict
+
+    def train(self):
+        
+        # build graphs for training model and sampling captions
+        # This scope fixed things!!
+        with tf.variable_scope(tf.get_variable_scope()):
+            loss, loss_sent, loss_label, loss_word = self.model.build_model(S_max=6)
+            s_loss, _, s_loss_label, s_loss_word = self.model.build_model(S_max=1, semi=True, reuse=True)
+            sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
+    
+        train_op = self.backprop(loss)
+        s_train_op = self.backprop(s_loss, reuse=True)
+        
+        tf_vars = {
+            "loss": loss,
+            "loss_sent": loss_sent,
+            "loss_label": loss_label,
+            "loss_word": loss_word,
+            "s_loss": s_loss,
+            "s_loss_word": s_loss_word,
+            "s_loss_label": s_loss_label,
+            "sampled_paragraphs": sampled_paragraphs,
+            "pred_re": pred_re,
+            "train_op": train_op,
+            "s_train_op": s_train_op,
+        }
+
+        # summary 
+        self.summary_scalars(tf_vars)
+        summary_op = tf.summary.merge_all()
+
         # init session
         sess, saver = self.init_session()
-        # summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
-        
-        pretrained_epoch = 0
-        if self.pretrained_model is not None:
-            pretrained_epoch = int(self.pretrained_model.split('-')[1] )
-            print "start training from %d epoch" % pretrained_epoch
+        summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
+        self.model_summary()
 
-        
-        threshold = 0 # for early stop (METEOR + CIDEr)
+        # for early stop (METEOR + CIDEr)
+        threshold = 0 
         threshold_no_change_epoch = 0
-        
+
         # start training
         start_t = time.time()
-        log_file = "log.txt"
-        if self.pretrained_model is not None:
-            log_file = "log_" + self.pretrained_model + ".txt"
-
-        with open(os.path.join(self.log_path, log_file), 'w') as log:
-        
+        with open(os.path.join(self.log_path, self.log_file), 'w') as log:
+            
+            print "start training from %d epoch" % self.pretrained_epoch
             for e in range(self.n_epoch):
 
-                if e < pretrained_epoch:
+                # skip epoch
+                if e < self.pretrained_epoch:
                     continue
 
-                train_data.reset_pointer()
+                loss_dict = {
+                    "total_loss": 0.0,
+                    "total_label_loss": 0.0,
+                    "total_sent_loss": 0.0,
+                    "total_word_loss": 0.0
+                }
 
-                total_loss = 0.0
-                total_label_loss = 0.0
-                total_sent_loss = 0.0
-                total_word_loss = 0.0
-                for i in range(num_batch):
-                    batch_data = train_data.next_batch()
-
-                    feed_dict = {
-                         self.model.densecap_feats: batch_data["densecap_feats"],
-                         self.model.num_distribution: batch_data["num_distribution"],
-                         self.model.captions: batch_data["captions"],
-                         # self.model.caption_labels: batch_data["caption_labels"],
-                    }
+                # semi training
+                # but data is so big that cannot load all in once, so i split.
+                for s_feats_files, s_captions_files in  zip(self.semi_dense_feats_files, self.semi_captions_files):
+                    print s_feats_files + " is loading..."
+                    train_data = SemiTrainingData(s_feats_files, s_captions_files, self.batch_size)
+                    self.run_epoch(sess, train_data, loss_dict, tf_vars, semi=True)
                     
-                    _, _loss, _loss_sent, _loss_label, _loss_word = sess.run([train_op, loss, loss_sent, loss_label, loss_word], feed_dict)
-        
-                    total_loss += _loss
-                    total_label_loss += _loss_label
-                    total_word_loss += _loss_word
-                    total_sent_loss += _loss_sent
 
-                    # write summary for tensorboard visualization
-                    # if i % 10 == 0:
-                    #     summary = sess.run(summary_op, feed_dict)
-                    #     summary_writer.add_summary(summary, e*num_batch + i)
+                # training img to paragraph
+                print "im2p is loading..."
+                train_data = TrainingData(self.config, self.batch_size)
+                self.run_epoch(sess, train_data, loss_dict, tf_vars)
+
+                # write summary for tensorboard visualization
+                # if e % 10 == 0:
+                
+                # summary = sess.run(summary_op, feed_dict)
+                # summary_writer.add_summary(summary, e)
 
 
-                # monitor
+
+
+                # print loss 
                 msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, Time cost: %f' % \
-                      (e+1, total_loss/num_batch, total_sent_loss/num_batch, total_label_loss/num_batch, total_word_loss/num_batch, time.time() - start_t)
+                      (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], time.time() - start_t)
                 print msg1
                 log.write(msg1 + '\n')
+
 
                 # validate
                 output_path = os.path.join( self.result_path, "val_candidate.txt" )
                 self.validate(sess, sampled_paragraphs, pred_re, output_path)
+
 
                 # print evaluation score
                 final_scores = evaluate(get_scores=True, reference_path="../data/val_reference.txt", candidate_path=output_path)
@@ -217,7 +292,6 @@ class ParagraphSolver(object):
                 log.write(msg2 + '\n')
 
                 print "-"*50
-
 
 
                 # early stopping
@@ -300,7 +374,6 @@ class ParagraphSolver(object):
             print msg2
             f.write(msg2 + '\n')
 
-        
 
         print "Time cost: " + str(time.time()-start_time)
 
