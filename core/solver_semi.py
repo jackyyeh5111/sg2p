@@ -20,9 +20,10 @@ tf_config.gpu_options.allow_growth = True
 class ParagraphSolver(object):
     def __init__(self, model, data, config, opts):
 
-        self.save_every = 9
+        self.save_every = 2
         self.early_stop_epoch = 10
         self.early_stop = opts.early_stop
+        self.semi_training = semi_training
 
         self.config = config
         self.model = model
@@ -120,14 +121,10 @@ class ParagraphSolver(object):
         output_paragraphs(totol_paragraphs, output_path)
 
 
-    def backprop(self, loss, semi=False, reuse=False, max_gradient_norm=1.0):
+    def backprop(self, loss, reuse=False, max_gradient_norm=1.0):
         with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
             # Calculate and clip gradients
-            if semi == True:
-                params = [var for var in tf.trainable_variables() if "word_LSTM" in var.name ]
-            else:
-                params = tf.trainable_variables()
-
+            params = tf.trainable_variables()
             gradients = tf.gradients(loss, params)
             clipped_gradients, _ = tf.clip_by_global_norm( gradients, max_gradient_norm )
 
@@ -173,6 +170,7 @@ class ParagraphSolver(object):
                      tf_vars["s_loss_word"]], feed_dict)
 
             else:
+                im2p_weights = 5
                 feed_dict = {
                      self.model.densecap_feats: batch_data["densecap_feats"],
                      self.model.num_distribution: batch_data["num_distribution"],
@@ -187,6 +185,11 @@ class ParagraphSolver(object):
                      tf_vars["loss_label"], 
                      tf_vars["loss_word"]], feed_dict)
 
+                _loss = _loss * im2p_weights
+                _loss_sent = _loss_sent * im2p_weights
+                _loss_label = _loss_label * _loss_label
+                _loss_word = _loss_word * im2p_weights
+
 
                 loss_dict["total_sent_loss"] += _loss_sent
 
@@ -194,7 +197,7 @@ class ParagraphSolver(object):
             loss_dict["total_label_loss"] += _loss_label
             loss_dict["total_word_loss"] += _loss_word
             
-        return loss_dict
+            return loss_dict
 
     def train(self):
         
@@ -202,11 +205,13 @@ class ParagraphSolver(object):
         # This scope fixed things!!
         with tf.variable_scope(tf.get_variable_scope()):
             loss, loss_sent, loss_label, loss_word = self.model.build_model(S_max=6)
-            s_loss, _, s_loss_label, s_loss_word = self.model.build_model(S_max=1, semi=True, reuse=True)
             sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
+
+            if self.semi_training:
+                s_loss, _, s_loss_label, s_loss_word = self.model.build_model(S_max=1, semi=True, reuse=True)
     
         train_op = self.backprop(loss)
-        s_train_op = self.backprop(s_loss, semi=True, reuse=True)
+        s_train_op = self.backprop(s_loss, reuse=True)
         
         tf_vars = {
             "loss": loss,
@@ -235,8 +240,6 @@ class ParagraphSolver(object):
         threshold = 0 
         threshold_no_change_epoch = 0
 
-        train_data = self.data.train_data
-
         # start training
         start_t = time.time()
         with open(os.path.join(self.log_path, self.log_file), 'w') as log:
@@ -257,25 +260,26 @@ class ParagraphSolver(object):
 
                 # semi training
                 # but data is so big that cannot load all in once, so i split.
-                if (e+1) % 5 == 0:
+                if self.semi_training:
                     for s_feats_files, s_captions_files in  zip(self.semi_dense_feats_files, self.semi_captions_files):
                         print s_feats_files + " is loading..."
                         train_data = SemiTrainingData(s_feats_files, s_captions_files, self.batch_size)
                         self.run_epoch(sess, train_data, loss_dict, tf_vars, semi=True)
-                   
-                    # training img to paragraph
-                    print "im2p is loading..."
-                    train_data = TrainingData(self.config, self.batch_size)
-                    self.run_epoch(sess, train_data, loss_dict, tf_vars)
+                    
 
-                else:
-                    self.run_epoch(sess, train_data, loss_dict, tf_vars)
+                # training img to paragraph
+                print "im2p is loading..."
+                train_data = TrainingData(self.config, self.batch_size)
+                self.run_epoch(sess, train_data, loss_dict, tf_vars)
 
                 # write summary for tensorboard visualization
                 # if e % 10 == 0:
                 
                 # summary = sess.run(summary_op, feed_dict)
                 # summary_writer.add_summary(summary, e)
+
+
+
 
                 # print loss 
                 msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, Time cost: %f' % \
@@ -330,6 +334,8 @@ class ParagraphSolver(object):
             sampled_paragraphs, pred_re = self.model.build_sampler(reuse=False)
 
         sess, _ = self.init_session()
+       
+        fw = open( os.path.join(self.result_path, self.pretrained_model), 'w')
 
         # start inference
         start_time = time.time()        
@@ -379,6 +385,8 @@ class ParagraphSolver(object):
                         final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
             print msg2
             f.write(msg2 + '\n')
+
+        fw.close()
 
         print "Time cost: " + str(time.time()-start_time)
 

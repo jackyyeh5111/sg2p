@@ -65,7 +65,7 @@ class Data():
         self.embed_matrix = np.load(config.pretrained_embed_matrix_path)
 
         if mode == "train":
-        #     self.train_data = TrainingData(config, batch_size=config.batch_size)
+            self.train_data = TrainingData(config, batch_size=config.batch_size)
             self.val_data = ValidateData(config, batch_size=config.test_batch_size)
 
         elif mode == "infer":

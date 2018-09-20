@@ -19,7 +19,7 @@ class Config():
 	wordRNN_lstm_dim = 512 # the word LSTM hidden units
 	word_embed_dim = 1024 # the learned embedding vectors for the words
 	sentRNN_numlayer = 1
-	sentRNN_numlayer = 2
+	wordRNN_numlayer = 2
 
 	S_max = 6
 	N_max = 30
@@ -29,7 +29,7 @@ class Config():
 	update_rule = 'adam'
 	learning_rate = 0.0001
 	batch_size = 128
-	test_batch_size = 128
+	test_batch_size = 256
 
 
 	# data path
@@ -53,17 +53,17 @@ class Config():
 	densecap_validate_path = "../data/image_path/imgs_val_path.txt"
 	densecap_test_path = "../data/image_path/imgs_test_path.txt"
 
-	semi_dense_feats_files = ["../data/densecap/coco_train_output_0to2.hkl",
-							  "../data/densecap/coco_train_output_2to4.hkl",
-							  "../data/densecap/coco_train_output_4to6.hkl",
-							  "../data/densecap/coco_train_output_6to8.hkl",
-							  "../data/densecap/coco_train_output_after8.hkl"]
+	semi_dense_feats_files = ["../data/densecap/coco_train_output_0to2.hkl"]
+							  # "../data/densecap/coco_train_output_2to4.hkl",
+							  # "../data/densecap/coco_train_output_4to6.hkl",
+							  # "../data/densecap/coco_train_output_6to8.hkl",
+							  # "../data/densecap/coco_train_output_after8.hkl"]
  
-	semi_captions_files = ["../data/annotations/coco_captions_0to2.npy",
-						   "../data/annotations/coco_captions_2to4.npy",
-						   "../data/annotations/coco_captions_4to6.npy",
-						   "../data/annotations/coco_captions_6to8.npy",
-						   "../data/annotations/coco_captions_after8.npy"]
+	semi_captions_files = ["../data/annotations/coco_captions_0to2.npy"]
+						   # "../data/annotations/coco_captions_2to4.npy",
+						   # "../data/annotations/coco_captions_4to6.npy",
+						   # "../data/annotations/coco_captions_6to8.npy",
+						   # "../data/annotations/coco_captions_after8.npy"]
 
 
 	# for test

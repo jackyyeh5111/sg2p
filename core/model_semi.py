@@ -98,7 +98,10 @@ class Regions_Hierarchical():
             self.word_LSTM = tf.contrib.rnn.BasicLSTMCell(wordRNN_lstm_dim, state_is_tuple=True)
 
             self.embed_word_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, self.vocab_size], -0.1,0.1), name='embed_word_W')
-            self.embed_word_b = tf.Variable(tf.zeros([self.vocab_size]), name='embed_word_b')
+            if bias_init_vector is not None:
+                self.embed_word_b = tf.Variable(bias_init_vector.astype(np.float32), name='embed_word_b')
+            else:
+                self.embed_word_b = tf.Variable(tf.zeros([self.vocab_size]), name='embed_word_b')
 
 
             # placeholder
@@ -219,7 +222,7 @@ class Regions_Hierarchical():
             features_proj = tf.reshape(features_proj, [-1, self.L, self.D])
             return features_proj
 
-            
+
     def build_model(self, S_max, semi=False, reuse=False):
 
         features = self.densecap_feats # (50, 4096)
@@ -238,7 +241,7 @@ class Regions_Hierarchical():
         features = self._batch_norm(features, mode='train', name='dense_features', reuse=reuse)
 
         c, h = self._get_initial_lstm(features=features, reuse=reuse)
-        # x = self._word_embedding(inputs=captions_in)
+        
         features_proj = self._project_features(features=features, reuse=reuse)
 
         
@@ -262,7 +265,6 @@ class Regions_Hierarchical():
                 if self.selector:
                     context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
-            
                 with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
                     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
 
@@ -291,6 +293,35 @@ class Regions_Hierarchical():
                 word_c, word_h = topic
 
 
+                # with tf.name_scope('word_RNN'):
+                #     current_embed = tf.nn.embedding_lookup(self.Wemb, self.captions[:, i])
+
+                #     decoder_length = tf.cast(captions_length[:, i], dtype=tf.int32)
+                #     train_helper = tf.contrib.seq2seq.TrainingHelper(current_embed, decoder_length, time_major=True)
+                   
+                #     # Decoder
+                #     decoder = tf.contrib.seq2seq.BasicDecoder(
+                #         cell=self.word_LSTM, helper=train_helper, initial_state=topic)
+
+                #     outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(
+                #         decoder=decoder, output_time_major=True,
+                #         impute_finished=True, maximum_iterations=self.N_max
+                #     )
+
+                #     print outputs
+                #     outputs = outputs.rnn_output
+                #     print outputs
+                #     sent_output = self._decode_lstm(outputs, context, dropout=self.dropout, reuse=reuse or (i!=0))
+
+                #     print final_outputs
+                #     print "-" * 5
+                #     print final_state
+                #     raw_input()
+                #     # sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
+
+                    
+
+
                 for j in range(0, self.N_max):
                     if j > 0:
                         tf.get_variable_scope().reuse_variables()
@@ -299,11 +330,12 @@ class Regions_Hierarchical():
                     current_embed = tf.nn.embedding_lookup(self.Wemb, captions[:, i, j])
 
                     # print "current_embed:", current_embed
+
                     
                     with tf.variable_scope('word_LSTM', reuse=(j!=0)):
                         _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
-                        word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=reuse or (j!=0))
-                        logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
+
+                    word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=True)
 
                     labels = tf.reshape(captions[:, i, j+1], [-1, 1])
                     indices = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1])
@@ -314,6 +346,7 @@ class Regions_Hierarchical():
                     # At each timestep the hidden state of the last LSTM layer is used to predict a distribution
                     # over the words in the vocbulary
                     with tf.name_scope('word_loss'):
+                        logit_words = tf.nn.xw_plus_b(word_output[:], self.embed_word_W, self.embed_word_b)
                         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
                         cross_entropy = cross_entropy * captions_masks[:, i, j]
                         loss_wordRNN = tf.reduce_sum(cross_entropy) / self.batch_size
@@ -391,8 +424,9 @@ class Regions_Hierarchical():
                 with tf.variable_scope('word_LSTM', reuse=reuse or (j!=0)):
                     _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
 
-                    word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=reuse or (j!=0))
-                    logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
+                word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=True)
+
+                logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
                 
                 next_token = tf.argmax(logit_words, 1)
                 generated_sent.append(next_token)
