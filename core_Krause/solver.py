@@ -180,15 +180,17 @@ class ParagraphSolver(object):
                      # self.model.caption_labels: batch_data["caption_labels"],
                 }
             
-                _, _loss, _loss_sent, _loss_label, _loss_word = sess.run(
+                _, _loss, _loss_sent, _loss_label, _loss_word, _alpha_reg = sess.run(
                     [tf_vars["train_op"], 
                      tf_vars["loss"], 
                      tf_vars["loss_sent"], 
                      tf_vars["loss_label"], 
-                     tf_vars["loss_word"]], feed_dict)
+                     tf_vars["loss_word"],
+                     tf_vars["alpha_reg"]], feed_dict)
 
 
                 loss_dict["total_sent_loss"] += _loss_sent
+                loss_dict["alpha_reg"] += _alpha_reg
 
             loss_dict["total_loss"] += _loss
             loss_dict["total_label_loss"] += _loss_label
@@ -201,26 +203,39 @@ class ParagraphSolver(object):
         # build graphs for training model and sampling captions
         # This scope fixed things!!
         with tf.variable_scope(tf.get_variable_scope()):
-            loss, loss_sent, loss_label, loss_word = self.model.build_model(S_max=6)
-            s_loss, _, s_loss_label, s_loss_word = self.model.build_model(S_max=1, semi=True, reuse=True)
+            _tf_vars = self.model.build_model(S_max=6)
+            _semi_tf_vars = self.model.build_model(S_max=1, semi=True, reuse=True)
             sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
-    
-        train_op = self.backprop(loss)
-        s_train_op = self.backprop(s_loss, semi=True, reuse=True)
         
-        tf_vars = {
-            "loss": loss,
-            "loss_sent": loss_sent,
-            "loss_label": loss_label,
-            "loss_word": loss_word,
-            "s_loss": s_loss,
-            "s_loss_word": s_loss_word,
-            "s_loss_label": s_loss_label,
-            "sampled_paragraphs": sampled_paragraphs,
-            "pred_re": pred_re,
-            "train_op": train_op,
-            "s_train_op": s_train_op,
-        }
+        tf_vars = {}
+        for key, value in _tf_vars.iteritems():
+            tf_vars[key] = value
+        for key, value in _semi_tf_vars.iteritems():
+            s_key = 's_' + key
+            tf_vars[s_key] = value
+
+        train_op = self.backprop(tf_vars["loss"])
+        s_train_op = self.backprop(tf_vars["s_loss"], semi=True, reuse=True)
+        
+        tf_vars["sampled_paragraphs"] = sampled_paragraphs
+        tf_vars["pred_re"] = pred_re
+        tf_vars["train_op"] = train_op
+        tf_vars["s_train_op"] = s_train_op
+
+        # tf_vars[] = {
+        #     "loss": loss,
+        #     "loss_sent": loss_sent,
+        #     "loss_label": loss_label,
+        #     "loss_word": loss_word,
+        #     "s_loss": s_loss,
+        #     "s_loss_word": s_loss_word,
+        #     "s_loss_label": s_loss_label,
+        #     "sampled_paragraphs": sampled_paragraphs,
+        #     "pred_re": pred_re,
+        #     "train_op": train_op,
+        #     "s_train_op": s_train_op,
+        #     "alpha_reg": alpha_reg
+        # }
 
         # summary 
         self.summary_scalars(tf_vars)
@@ -252,7 +267,8 @@ class ParagraphSolver(object):
                     "total_loss": 0.0,
                     "total_label_loss": 0.0,
                     "total_sent_loss": 0.0,
-                    "total_word_loss": 0.0
+                    "total_word_loss": 0.0,
+                    "alpha_reg": 0.0,
                 }
 
                 # semi training
@@ -277,8 +293,8 @@ class ParagraphSolver(object):
                 # summary_writer.add_summary(summary, e)
 
                 # print loss 
-                msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, Time cost: %f' % \
-                      (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], time.time() - start_t)
+                msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, alpha_reg: %f, Time cost: %f' % \
+                      (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], loss_dict["alpha_reg"], time.time() - start_t)
                 print msg1
                 log.write(msg1 + '\n')
 

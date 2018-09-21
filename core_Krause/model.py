@@ -28,7 +28,8 @@ class Regions_Hierarchical():
                        encoder_lstm_dim=512, 
                        dropout=True,
                        ctx2out=True,
-                       selector=False):
+                       selector=False,
+                       alpha_c=0.05):
 
             self.vocab_size = len(word2idx)
             self.pad_idx = word2idx["<pad>"]
@@ -45,6 +46,7 @@ class Regions_Hierarchical():
             self.L = num_boxes
             self.D = feats_dim
             self.ctx2out = ctx2out
+            self.alpha_c = alpha_c
 
 
             self.sentRNN_lstm_dim = sentRNN_lstm_dim 
@@ -229,8 +231,10 @@ class Regions_Hierarchical():
         else:
             captions = self.captions
 
-        captions_masks = tf.to_float(tf.not_equal(captions, self.pad_idx))
-        captions_length = tf.reduce_sum(captions_masks, 2)
+        captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
+        captions_length = tf.reduce_sum(captions_mask, 2)
+
+        sents_mask = tf.to_float(tf.not_equal(self.num_distribution, 0))
         
         # captions_labels_masks = tf.to_float(tf.not_equal(self.num_distribution, self.pad_idx))
 
@@ -248,6 +252,7 @@ class Regions_Hierarchical():
         loss_label = tf.constant(0.0)
         lambda_sent = 5.0
         lambda_word = 1.0
+        alpha_reg = tf.constant(0.0)
 
         alpha_list = []
         # reviewer_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.encoder_lstm_dim)
@@ -262,10 +267,10 @@ class Regions_Hierarchical():
                 if self.selector:
                     context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
-            
+
                 with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
                     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
-
+                
                 sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
 
                 with tf.name_scope('fc1'):
@@ -315,12 +320,30 @@ class Regions_Hierarchical():
                     # over the words in the vocbulary
                     with tf.name_scope('word_loss'):
                         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
-                        cross_entropy = cross_entropy * captions_masks[:, i, j]
+                        cross_entropy = cross_entropy * captions_mask[:, i, j]
                         loss_wordRNN = tf.reduce_sum(cross_entropy) / self.batch_size
                         loss += loss_wordRNN * lambda_word
                         loss_word += loss_wordRNN
 
-        return loss, loss_sent, loss_label, loss_word
+            tf_vars = {
+                "loss": loss,
+                "loss_sent": loss_sent,
+                "loss_label": loss_label,
+                "loss_word": loss_word,
+            }
+
+            
+            if semi == False:
+                # attention regularization
+                if self.alpha_c > 0:
+                    sents_mask = tf.expand_dims(sents_mask, 2)
+                    alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2)) * sents_mask  # (N, T, L)
+                    alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
+                    alpha_reg = self.alpha_c * tf.reduce_sum((self.S_max/4096.0 - alphas_all) ** 2)
+                    tf_vars["loss"] += alpha_reg
+                    tf_vars["alpha_reg"] = alpha_reg
+
+        return tf_vars
 
     
     def build_sampler(self, reuse):

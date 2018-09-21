@@ -36,12 +36,15 @@ def load_opts():
     op.add_option("--transfered_model_name",
                   dest="transfered_model_name", type=str, default=None,
                   help="The directory of pretrained model or transfer parameters.")
-    
+    op.add_option("--semi_training",
+                  dest="semi_training", action="store_true", default=False, 
+                  help="training with COCO dataset")
 
     op.add_option("--sentRNN_lstm_dim",
                   dest="sentRNN_lstm_dim", type=int, default=512)
     op.add_option("--wordRNN_lstm_dim",
                   dest="wordRNN_lstm_dim", type=int, default=512)
+
     
 
     (opts, args) = op.parse_args()
