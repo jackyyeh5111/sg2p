@@ -24,7 +24,6 @@ class Regions_Hierarchical():
                        N_max=30,
                        sentRNN_numlayer=1, 
                        wordRNN_numlayer=1,
-                       bias_init_vector=None,
                        encoder_lstm_dim=512, 
                        dropout=True,
                        ctx2out=True,
@@ -330,6 +329,7 @@ class Regions_Hierarchical():
                 "loss_sent": loss_sent,
                 "loss_label": loss_label,
                 "loss_word": loss_word,
+                "alpha_reg": alpha_reg,
             }
 
             
@@ -382,7 +382,7 @@ class Regions_Hierarchical():
             with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
                 _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
 
-            sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
+            sent_output = self._decode_lstm(h, context, reuse=reuse or (i!=0))
 
             with tf.name_scope('fc1'):
                 hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
@@ -414,7 +414,7 @@ class Regions_Hierarchical():
                 with tf.variable_scope('word_LSTM', reuse=reuse or (j!=0)):
                     _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])
 
-                    word_output = self._decode_lstm(word_h, context, dropout=self.dropout, reuse=reuse or (j!=0))
+                    word_output = self._decode_lstm(word_h, context, reuse=reuse or (j!=0))
                     logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
                 
                 next_token = tf.argmax(logit_words, 1)

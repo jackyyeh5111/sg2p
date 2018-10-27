@@ -196,4 +196,7 @@ class TestData():
 
         return batch_data
 
+    def reset_pointer(self):
+        self.pointer = 0
+
         

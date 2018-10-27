@@ -2,12 +2,11 @@ import tensorflow as tf
 import numpy as np
 import time
 import os
-import pickle as pickle
+import hickle
 from scipy import ndimage
 from util import *
 import sys
-# print 'cwd (before):', os.getcwd()
-os.chdir('/2t/jackyyeh/im2p/core') # for batch inference
+os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference
 from evaluate import evaluate
 from data_loader import SemiTrainingData, TrainingData
 import tensorflow.contrib.slim as slim
@@ -20,9 +19,11 @@ tf_config.gpu_options.allow_growth = True
 class ParagraphSolver(object):
     def __init__(self, model, data, config, opts):
 
-        self.save_every = 9
+        self.save_every = 20
+        self.save_every_aftere350epoch = 5
         self.early_stop_epoch = 10
         self.early_stop = opts.early_stop
+        self.ref_test_sents = opts.ref_test_sents
 
         self.config = config
         self.model = model
@@ -30,10 +31,9 @@ class ParagraphSolver(object):
         self.pretrained_model = opts.model_name
         self.data = data
         self.fixed_n_sent = opts.fixed_n_sent
-        self.semi_dense_feats_files = config.semi_dense_feats_files
-        self.semi_captions_files = config.semi_captions_files
         self.transfered_model_name = opts.transfered_model_name
-        
+        self.semi_training = opts.semi_training
+
         self.T_stop = config.T_stop
         self.n_epoch = config.n_epoch
         self.batch_size = config.batch_size
@@ -42,16 +42,22 @@ class ParagraphSolver(object):
         self.log_path = os.path.join(config.log_dir, self.process_name) 
         self.model_path = os.path.join(config.model_dir, self.process_name)
         self.result_path = os.path.join(config.result_dir, self.process_name)
-        self.update_rule = config.update_rule
+        self.update_rule = opts.update_rule
 
+
+        if self.semi_training:
+            self.semi_dense_feats_files = config.semi_dense_feats_files
+            self.semi_captions_files = config.semi_captions_files
 
         # get pretrained_epoch
         if self.pretrained_model is not None:
             self.pretrained_epoch = int(self.pretrained_model.split('-')[1] )
             self.log_file = "log_" + self.pretrained_model + ".txt"
+            self.score_file = "score_" + self.pretrained_model + ".txt"
         else:
             self.pretrained_epoch = 0
             self.log_file = "log.txt" 
+            self.score_file = "score.txt"
         
 
         # set an optimizer by update rule
@@ -70,7 +76,7 @@ class ParagraphSolver(object):
             os.makedirs(self.result_path)
 
 
-    def init_session(self, max_to_keep=None):
+    def init_session(self, max_to_keep=20):
         
         sess = tf.Session(config=tf_config)
         init = tf.global_variables_initializer()
@@ -133,26 +139,19 @@ class ParagraphSolver(object):
 
             # Optimization
             optimizer = self.optimizer(learning_rate=self.learning_rate)
-            train_op = optimizer.apply_gradients( zip(clipped_gradients, params) )
+            grads_and_vars = list(zip(clipped_gradients, params))
+            train_op = optimizer.apply_gradients( grads_and_vars=grads_and_vars )
 
-        return train_op
+        return train_op, grads_and_vars
 
-    def summary_scalars(self, tf_vars):
-        tf.summary.scalar('loss', tf_vars["loss"])
-        tf.summary.scalar('loss_sent', tf_vars["loss_sent"])
-        tf.summary.scalar('loss_word', tf_vars["loss_word"])
-        tf.summary.scalar('loss_label', tf_vars["loss_label"])
-        tf.summary.scalar('s_loss', tf_vars["s_loss"])
-        tf.summary.scalar('s_loss_word', tf_vars["s_loss_word"])
-        
-
+   
     def model_summary(self):
         print "-" * 50 + '\n'
         model_vars = tf.trainable_variables()
         slim.model_analyzer.analyze_vars(model_vars, print_info=True)
         print "-" * 50 + '\n'
 
-    def run_epoch(self, sess, train_data, loss_dict, tf_vars, semi=False):
+    def run_epoch(self, sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e, semi=False):
 
         train_data.reset_pointer()
 
@@ -195,7 +194,15 @@ class ParagraphSolver(object):
             loss_dict["total_loss"] += _loss
             loss_dict["total_label_loss"] += _loss_label
             loss_dict["total_word_loss"] += _loss_word
-            
+        
+
+        # average    
+        for key in loss_dict.keys():
+            loss_dict[key] = loss_dict[key] / train_data.num_batch
+
+        summary = sess.run(summary_op, feed_dict)
+        summary_writer.add_summary(summary, e)
+
         return loss_dict
 
     def train(self):
@@ -204,46 +211,49 @@ class ParagraphSolver(object):
         # This scope fixed things!!
         with tf.variable_scope(tf.get_variable_scope()):
             _tf_vars = self.model.build_model(S_max=6)
-            _semi_tf_vars = self.model.build_model(S_max=1, semi=True, reuse=True)
             sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
         
         tf_vars = {}
         for key, value in _tf_vars.iteritems():
             tf_vars[key] = value
-        for key, value in _semi_tf_vars.iteritems():
-            s_key = 's_' + key
-            tf_vars[s_key] = value
 
-        train_op = self.backprop(tf_vars["loss"])
-        s_train_op = self.backprop(tf_vars["s_loss"], semi=True, reuse=True)
-        
+        train_op, grads_and_vars = self.backprop(tf_vars["loss"])
+
         tf_vars["sampled_paragraphs"] = sampled_paragraphs
         tf_vars["pred_re"] = pred_re
         tf_vars["train_op"] = train_op
-        tf_vars["s_train_op"] = s_train_op
 
-        # tf_vars[] = {
-        #     "loss": loss,
-        #     "loss_sent": loss_sent,
-        #     "loss_label": loss_label,
-        #     "loss_word": loss_word,
-        #     "s_loss": s_loss,
-        #     "s_loss_word": s_loss_word,
-        #     "s_loss_label": s_loss_label,
-        #     "sampled_paragraphs": sampled_paragraphs,
-        #     "pred_re": pred_re,
-        #     "train_op": train_op,
-        #     "s_train_op": s_train_op,
-        #     "alpha_reg": alpha_reg
-        # }
+        if self.semi_training:
 
-        # summary 
-        self.summary_scalars(tf_vars)
+            _semi_tf_vars = self.model.build_model(S_max=1, semi=True, reuse=True)
+            
+            for key, value in _semi_tf_vars.iteritems():
+                s_key = 's_' + key
+                tf_vars[s_key] = value
+
+            s_train_op = self.backprop(tf_vars["s_loss"], semi=True, reuse=True)
+            tf_vars["s_train_op"] = s_train_op
+
+
+        # summary visualization
+        loss_scalars = [(key, tf_vars[key]) for key in tf_vars.keys() if 'loss' in key]
+        for (key, tf_var) in loss_scalars:
+            tf.summary.scalar(key, tf_var)       
+
+        for grad, var in grads_and_vars:
+            try:
+                tf.summary.histogram(var.op.name, var)
+                tf.summary.histogram(var.op.name+'/gradient', grad)
+            except:
+                print var.op.name
+
         summary_op = tf.summary.merge_all()
+        summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
+
 
         # init session
         sess, saver = self.init_session()
-        summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
+        
         self.model_summary()
 
         # for early stop (METEOR + CIDEr)
@@ -254,86 +264,93 @@ class ParagraphSolver(object):
 
         # start training
         start_t = time.time()
+        scores = []
+        
+
         with open(os.path.join(self.log_path, self.log_file), 'w') as log:
+            with open(os.path.join(self.result_path, self.score_file), 'w') as f_score:
             
-            print "start training from %d epoch" % self.pretrained_epoch
-            for e in range(self.n_epoch):
+                print "start training from %d epoch" % self.pretrained_epoch
+                for e in range(self.n_epoch):
 
-                # skip epoch
-                if e < self.pretrained_epoch:
-                    continue
+                    # skip epoch
+                    if e < self.pretrained_epoch:
+                        continue
 
-                loss_dict = {
-                    "total_loss": 0.0,
-                    "total_label_loss": 0.0,
-                    "total_sent_loss": 0.0,
-                    "total_word_loss": 0.0,
-                    "alpha_reg": 0.0,
-                }
-
-                # semi training
-                # but data is so big that cannot load all in once, so i split.
-                if (e+1) % 5 == 0:
-                    for s_feats_files, s_captions_files in  zip(self.semi_dense_feats_files, self.semi_captions_files):
-                        print s_feats_files + " is loading..."
-                        train_data = SemiTrainingData(s_feats_files, s_captions_files, self.batch_size)
-                        self.run_epoch(sess, train_data, loss_dict, tf_vars, semi=True)
-                   
-                    # training img to paragraph
-                    print "im2p is loading..."
-                    train_data = TrainingData(self.config, self.batch_size)
-                    self.run_epoch(sess, train_data, loss_dict, tf_vars)
-
-                else:
-                    self.run_epoch(sess, train_data, loss_dict, tf_vars)
-
-                # write summary for tensorboard visualization
-                # if e % 10 == 0:
-                # summary = sess.run(summary_op, feed_dict)
-                # summary_writer.add_summary(summary, e)
-
-                # print loss 
-                msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, alpha_reg: %f, Time cost: %f' % \
-                      (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], loss_dict["alpha_reg"], time.time() - start_t)
-                print msg1
-                log.write(msg1 + '\n')
+                    loss_dict = {
+                        "total_loss": 0.0,
+                        "total_label_loss": 0.0,
+                        "total_sent_loss": 0.0,
+                        "total_word_loss": 0.0,
+                        "alpha_reg": 0.0,
+                    }
 
 
-                # validate
-                output_path = os.path.join( self.result_path, "val_candidate.txt" )
-                self.validate(sess, sampled_paragraphs, pred_re, output_path)
+                    # semi training
+                    # but data is so big that cannot load all in once, so i split.
+                    if self.semi_training:
+                        if (e+1) % 5 == 0:
+                            for s_feats_files, s_captions_files in zip(self.semi_dense_feats_files, self.semi_captions_files):
+                                print s_feats_files + " is loading..."
+                                train_data = SemiTrainingData(s_feats_files, s_captions_files, self.batch_size)
+                                self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1, semi=True)
+                           
+                            # training img to paragraph
+                            print "im2p is loading..."
+                            train_data = TrainingData(self.config, self.batch_size)
+                            self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
+
+                        else:
+                            self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
+
+                    else:
+                        self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
 
 
-                # print evaluation score
-                final_scores = evaluate(get_scores=True, reference_path="../data/val_reference.txt", candidate_path=output_path)
-                msg2 = "epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" \
-                    % (e+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
-                    final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
-                print msg2
-                log.write(msg2 + '\n')
-
-                print "-"*50
+                    # print loss 
+                    msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, alpha_reg: %f, Time cost: %f' % \
+                          (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], loss_dict["alpha_reg"], time.time() - start_t)
+                    print msg1
+                    log.write(msg1 + '\n')
 
 
-                # early stopping
-                if threshold < (final_scores['METEOR'] + final_scores['CIDEr']):
-                    threshold = final_scores['METEOR'] + final_scores['CIDEr']
-                    threshold_no_change_epoch = 0
-                else:
-                    threshold_no_change_epoch += 1
+                    # early stopping
+                    # if threshold < (final_scores['METEOR'] + final_scores['CIDEr']):
+                    #     threshold = final_scores['METEOR'] + final_scores['CIDEr']
+                    #     threshold_no_change_epoch = 0
+                    # else:
+                    #     threshold_no_change_epoch += 1
 
-                if self.early_stop == True:
-                    if threshold_no_change_epoch >= self.early_stop_epoch:
+                    # if self.early_stop == True:
+                    #     if threshold_no_change_epoch >= self.early_stop_epoch:
+                    #         saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
+                    #         print "model-%s saved." % (e+1)
+                    #         break
+
+                    # save model's parameters and validate
+                    if ((e+1) % self.save_every == 0 and (e+1) < 350) or \
+                       ((e+1) % self.save_every_aftere350epoch == 0 and (e+1) >= 350):  
+                        
+                        # validate
+                        output_path = os.path.join( self.result_path, "val_candidate_" + str(e+1) + "_txt")
+                        self.validate(sess, sampled_paragraphs, pred_re, output_path)
+
+                        # print evaluation score
+                        final_scores = evaluate(get_scores=True, reference_path="../data/reference.txt", candidate_path=output_path)
+                        msg2 = "epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" \
+                            % (e+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+                            final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
+                        print msg2
+                        log.write(msg2 + '\n')
+                        print "-"*50
+
+                        f_score.write(msg2)
+
+                        # save model
                         saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
                         print "model-%s saved." % (e+1)
-                        break
 
-                # save model's parameters and validate
-                if (e+1) % self.save_every == 0:  
-                    # save model
-                    saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                    print "model-%s saved." % (e+1)
-
+                
 
 
     def inference(self):
@@ -352,6 +369,12 @@ class ParagraphSolver(object):
         totol_paragraphs = []
         infered_paragraph = 0
         total_max_pred_words = []
+
+        
+        if self.ref_test_sents == True:
+            n_test_data_sents_path = self.config.n_test_data_sents_path 
+            n_test_data_sents = hickle.load(n_test_data_sents_path)
+
         for i in xrange(test_data.num_batch):
             batch_data = test_data.next_batch()
 
@@ -361,7 +384,13 @@ class ParagraphSolver(object):
 
             _sampled_paragraphs, _pred = sess.run([sampled_paragraphs, pred_re], feed_dict)
             
-            infer_paragraphs = decode_paragraphs(_sampled_paragraphs, _pred, idx2word, fixed_n_sent=self.fixed_n_sent)
+            
+            infer_paragraphs = decode_paragraphs(
+                _sampled_paragraphs, _pred, idx2word, 
+                fixed_n_sent=self.fixed_n_sent, 
+                n_test_data_sents=n_test_data_sents[i*self.test_batch_size:(i+1)*self.test_batch_size] if self.ref_test_sents==True else None)
+
+
             totol_paragraphs.extend(infer_paragraphs)
 
             # batch_max_pred_words = get_max_pred_words(_total_pred_labels, 20, idx2word)

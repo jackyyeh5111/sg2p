@@ -8,7 +8,7 @@ from optparse import OptionParser
 import numpy as np
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 def load_opts():
@@ -22,6 +22,9 @@ def load_opts():
     op.add_option("--model_name",
                   dest="model_name", type=str, default=None,
                   help="The directory of save model.")
+    op.add_option("--update_rule",
+                  dest="update_rule", type=str, default="adam")
+
     op.add_option("--fixed_n_sent",
                   dest="fixed_n_sent", action="store_true", default=False, 
                   help="generate fixed number(S_max) of sent of a paragraph while inferencing")
@@ -39,6 +42,8 @@ def load_opts():
     op.add_option("--semi_training",
                   dest="semi_training", action="store_true", default=False, 
                   help="training with COCO dataset")
+    op.add_option("--ref_test_sents",
+                  dest="ref_test_sents", action="store_true", default=False)
 
     op.add_option("--sentRNN_lstm_dim",
                   dest="sentRNN_lstm_dim", type=int, default=512)
@@ -69,7 +74,8 @@ class Data():
 
         if mode == "train":
             self.train_data = TrainingData(config, batch_size=config.batch_size)
-            self.val_data = ValidateData(config, batch_size=config.test_batch_size)
+            # self.val_data = ValidateData(config, batch_size=config.test_batch_size)
+            self.val_data = TestData(config, batch_size=config.test_batch_size)
 
         elif mode == "infer":
             self.test_data = TestData(config, batch_size=config.test_batch_size)

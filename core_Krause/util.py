@@ -1,7 +1,8 @@
 import numpy as np
 import os
 
-def decode_paragraphs(sampled_paragraphs, pred, idx2word, fixed_n_sent=False):
+def decode_paragraphs(sampled_paragraphs, pred, idx2word, fixed_n_sent=False, n_test_data_sents=None):
+    
     paragraphs = []
     T_stop = 0.5
     for g_idx, paragraph in enumerate(sampled_paragraphs):
@@ -9,13 +10,18 @@ def decode_paragraphs(sampled_paragraphs, pred, idx2word, fixed_n_sent=False):
         current_paragraph = []
         for s_idx, sent in enumerate(paragraph):
             
-            if fixed_n_sent == False:
+            if n_test_data_sents != None:
+                if s_idx == n_test_data_sents[g_idx]:
+                    break
+
+            elif fixed_n_sent == True:                 
+                if s_idx >= 6:
+                    break
+            else:
                 if pred[g_idx][s_idx][0] >= T_stop and s_idx >= 1:
                     break
             
-            if s_idx >= 6:
-                break
-
+            
             current_sent = ''
             for word_idx in sent:
                 current_sent += idx2word[str(word_idx)] + ' '

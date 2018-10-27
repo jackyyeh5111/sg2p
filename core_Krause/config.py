@@ -24,11 +24,11 @@ class Config():
 	S_max = 6
 	N_max = 30
 	T_stop = 0.5
-	n_epoch = 800
+	n_epoch = 1000
 
 	update_rule = 'adam'
 	learning_rate = 0.0001
-	batch_size = 128
+	batch_size = 64
 	test_batch_size = 256
 
 
@@ -41,7 +41,9 @@ class Config():
 	validate_feats_path = '../data/densecap/im2p_val_output.hkl'
 	test_feats_path = '../data/densecap/im2p_test_output.hkl'
 
-	
+	n_test_data_sents_path = '../data/n_test_data_sents.hkl'
+
+
 	word2index_path = '../data/word2idx.json'
 	index2word_path = '../data/idx2word.json'
 	img2paragraph_path = '../data/img2paragraph_modify_batch'
