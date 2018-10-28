@@ -24,11 +24,11 @@ class Config():
 	S_max = 6
 	N_max = 30
 	T_stop = 0.5
-	n_epoch = 1000
+	n_epoch = 800
 
 	update_rule = 'adam'
 	learning_rate = 0.0001
-	batch_size = 64
+	batch_size = 128
 	test_batch_size = 256
 
 

@@ -28,7 +28,7 @@ class Regions_Hierarchical():
                        dropout=True,
                        ctx2out=True,
                        selector=False,
-                       alpha_c=0.05):
+                       alpha_c=0.0):
 
             self.vocab_size = len(word2idx)
             self.pad_idx = word2idx["<pad>"]
@@ -71,7 +71,8 @@ class Regions_Hierarchical():
             self.regionPooling_b = tf.Variable(tf.zeros([project_dim]), name='regionPooling_b')
 
             # sentence LSTM
-            self.sent_LSTM = tf.contrib.rnn.BasicLSTMCell(sentRNN_lstm_dim, state_is_tuple=True)
+            # self.sent_LSTM = tf.contrib.rnn.BasicLSTMCell(sentRNN_lstm_dim, state_is_tuple=True)
+            self.sent_LSTM = tf.nn.rnn_cell.LSTMCell(self.sentRNN_lstm_dim, state_is_tuple=True, initializer=tf.orthogonal_initializer())
 
             # logistic classifier
             self.logistic_Theta_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, 2], -0.1, 0.1), name='logistic_Theta_W')
@@ -96,7 +97,8 @@ class Regions_Hierarchical():
             #     word_cells.append(word_cell)
                 
             # self.word_LSTM = tf.contrib.rnn.MultiRNNCell(cells=word_cells, state_is_tuple=True)
-            self.word_LSTM = tf.contrib.rnn.BasicLSTMCell(wordRNN_lstm_dim, state_is_tuple=True)
+            # self.word_LSTM = tf.contrib.rnn.BasicLSTMCell(wordRNN_lstm_dim, state_is_tuple=True)
+            self.word_LSTM = tf.nn.rnn_cell.LSTMCell(self.wordRNN_lstm_dim, state_is_tuple=True, initializer=tf.orthogonal_initializer())
 
             self.embed_word_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, self.vocab_size], -0.1,0.1), name='embed_word_W')
             self.embed_word_b = tf.Variable(tf.zeros([self.vocab_size]), name='embed_word_b')
@@ -175,8 +177,8 @@ class Regions_Hierarchical():
         with tf.variable_scope('logits', reuse=reuse):
             w_h = tf.get_variable('w_h', [self.H, self.H], initializer=self.weight_initializer)
             b_h = tf.get_variable('b_h', [self.H], initializer=self.const_initializer)
-            w_out = tf.get_variable('w_out', [self.H, self.H], initializer=self.weight_initializer)
-            b_out = tf.get_variable('b_out', [self.H], initializer=self.const_initializer)
+            # w_out = tf.get_variable('w_out', [self.H, self.H], initializer=self.weight_initializer)
+            # b_out = tf.get_variable('b_out', [self.H], initializer=self.const_initializer)
 
             # print h
 
@@ -197,8 +199,8 @@ class Regions_Hierarchical():
             if dropout:
                 h_logits = tf.nn.dropout(h_logits, 0.5)
 
-            out_logits = tf.matmul(h_logits, w_out) + b_out
-            return out_logits
+            # out_logits = tf.matmul(h_logits, w_out) + b_out
+            return h_logits
 
     def _batch_norm(self, x, mode='train', name=None, reuse=None):
         return tf.contrib.layers.batch_norm(inputs=x,

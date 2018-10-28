@@ -344,7 +344,7 @@ class ParagraphSolver(object):
                         log.write(msg2 + '\n')
                         print "-"*50
 
-                        f_score.write(msg2)
+                        f_score.write(msg2 + '\n')
 
                         # save model
                         saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
