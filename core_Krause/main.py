@@ -12,11 +12,14 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def load_opts():
+
     op = OptionParser()
+
+    op.add_option("-g", dest="gpu_id", type=str, default='0')
 
     op.add_option("-m", dest="mode", type=str,  
                   help="have three mode: 'train', 'infer', 'interact'.")
-    op.add_option("--process_name",
+    op.add_option("-p",
                   dest="process_name", type=str,
                   help="process name")
     op.add_option("--model_name",
@@ -77,8 +80,8 @@ class Data():
             # self.val_data = ValidateData(config, batch_size=config.test_batch_size)
             self.val_data = TestData(config, batch_size=config.test_batch_size)
 
-        elif mode == "infer":
-            self.test_data = TestData(config, batch_size=config.test_batch_size)
+        # elif mode == "infer":
+        #     self.test_data = TestData(config, batch_size=config.test_batch_size)
 
 
 def main():

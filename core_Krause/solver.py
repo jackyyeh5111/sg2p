@@ -2,8 +2,8 @@ import tensorflow as tf
 import numpy as np
 import time
 import os
-import hickle
-from scipy import ndimage
+# import hickle
+# from scipy import ndimage
 from util import *
 import sys
 os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference

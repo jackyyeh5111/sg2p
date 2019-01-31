@@ -37,9 +37,9 @@ class Config():
 	model_dir = "../models/"
 	result_dir = "../results/"
 
-	train_feats_path = '../data/densecap/im2p_train_output.hkl'
-	validate_feats_path = '../data/densecap/im2p_val_output.hkl'
-	test_feats_path = '../data/densecap/im2p_test_output.hkl'
+	train_feats_path = '../data/densecap/im2p_train_output.h5'
+	validate_feats_path = '../data/densecap/im2p_val_output.h5'
+	test_feats_path = '../data/densecap/im2p_test_output.h5'
 
 	n_test_data_sents_path = '../data/n_test_data_sents.hkl'
 
@@ -54,31 +54,3 @@ class Config():
 	densecap_train_path = "../data/image_path/imgs_train_path.txt"
 	densecap_validate_path = "../data/image_path/imgs_val_path.txt"
 	densecap_test_path = "../data/image_path/imgs_test_path.txt"
-
-	semi_dense_feats_files = ["../data/densecap/coco_train_output_0to2.hkl"]
-							  # "../data/densecap/coco_train_output_2to4.hkl",
-							  # "../data/densecap/coco_train_output_4to6.hkl",
-							  # "../data/densecap/coco_train_output_6to8.hkl",
-							  # "../data/densecap/coco_train_output_after8.hkl"]
- 
-	semi_captions_files = ["../data/annotations/coco_captions_0to2.npy"]
-						   # "../data/annotations/coco_captions_2to4.npy",
-						   # "../data/annotations/coco_captions_4to6.npy",
-						   # "../data/annotations/coco_captions_6to8.npy",
-						   # "../data/annotations/coco_captions_after8.npy"]
-
-
-	# for test
-	# semi_dense_feats_files = ["../data/densecap/coco_train_output_test.hkl",
-	# 						  "../data/densecap/coco_train_output_0to2.hkl",
-	# 						  "../data/densecap/coco_train_output_2to4.hkl",
-	# 						  "../data/densecap/coco_train_output_4to6.hkl",
-	# 						  "../data/densecap/coco_train_output_6to8.hkl",
-	# 						  "../data/densecap/coco_train_output_after8.hkl"]
- 
-	# semi_captions_files = ["../data/annotations/coco_captions_test.npy",
-	# 					   "../data/annotations/coco_captions_0to2.npy",
-	# 					   "../data/annotations/coco_captions_2to4.npy",
-	# 					   "../data/annotations/coco_captions_4to6.npy",
-	# 					   "../data/annotations/coco_captions_6to8.npy",
-	# 					   "../data/annotations/coco_captions_after8.npy"]

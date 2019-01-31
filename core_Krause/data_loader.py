@@ -3,7 +3,6 @@ import random
 import h5py
 import os
 import pickle
-import hickle
 import math
 
 class TrainingData():
@@ -31,10 +30,9 @@ class TrainingData():
         imgs_names = map(lambda x: os.path.basename(x).split('.')[0], image_paths)
         
         # load feats
-        # train_output_file = h5py.File(self.train_feats_path, 'r')
-        # train_feats = train_output_file.get('feats') 
-        # densecap_feats = np.asarray( [feats for feats in train_feats] )
-        densecap_feats = hickle.load(self.train_feats_path)
+        train_output_file = h5py.File(self.train_feats_path, 'r')
+        train_feats = train_output_file.get('feats') 
+        densecap_feats = np.asarray( [feats for feats in train_feats] )
         
         # load num_distribution, captions
         with open(self.img2paragraph_path, 'rb') as f:
@@ -182,7 +180,12 @@ class TestData():
     def load_data(self):
         
         # load feats
-        densecap_feats = hickle.load(self.test_feats_path)
+        # load feats
+        h5_file = h5py.File(self.test_feats_path, 'r')
+        h5_feats = h5_file.get('feats') 
+        densecap_feats = np.asarray( [feats for feats in h5_feats] )
+        
+        # densecap_feats = hickle.load(self.test_feats_path)
 
         return densecap_feats
 
