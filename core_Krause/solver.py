@@ -126,7 +126,7 @@ class ParagraphSolver(object):
         return train_op, grads_and_vars
 
    
-    def model_summary(self):
+    def _print_model_vars(self):
         print "-" * 50 + '\n'
         model_vars = tf.trainable_variables()
         slim.model_analyzer.analyze_vars(model_vars, print_info=True)
@@ -243,20 +243,13 @@ class ParagraphSolver(object):
 
         # init session
         self.sess, self.saver = self.init_session()
-        
-        self.model_summary()
+        self._print_model_vars()
 
-        # for early stop (METEOR + CIDEr)
-        threshold = 0 
-        threshold_no_change_epoch = 0
+        # self.model_summary()
 
-        train_data = self.data.train_data
-
+       
         # start training
         start_t = time.time()
-        scores = []
-        
-
         with open(os.path.join(self.log_path, self.log_file), 'w') as f_log:
             with open(os.path.join(self.result_path, self.score_file), 'w') as f_score:
             
