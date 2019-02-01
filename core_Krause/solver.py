@@ -132,39 +132,6 @@ class ParagraphSolver(object):
         slim.model_analyzer.analyze_vars(model_vars, print_info=True)
         print "-" * 50 + '\n'
 
-    # def _run_epoch(self, train_op, loss, loss_sent, loss_word):
-
-    #     train_data = self.data.train_data
-    #     train_data.reset_pointer()
-
-    #     total_loss = 0
-    #     total_sent_loss = 0
-    #     total_word_loss = 0
-
-    #     total_step = train_data.num_batch
-        
-    #     for step in tqdm(range(total_step)):
-
-    #         batch_data = train_data.next_batch()
-
-    #         feed_dict = {
-    #              self.model.densecap_feats: batch_data["densecap_feats"],
-    #              self.model.num_distribution: batch_data["num_distribution"],
-    #              self.model.captions: batch_data["captions"],
-    #         }
-            
-    #         _, _summary, _loss, _loss_sent, _loss_word = self.sess.run(
-    #             [train_op, self.summary_op, loss, loss_sent,loss_word], feed_dict)
-
-    #         total_loss += _loss
-    #         total_sent_loss += _loss_sent
-    #         total_word_loss += _loss_word
-        
-    #         self.summary_writer.add_summary(_summary, step)
-
-    #     return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
-
-
     def run_epoch(self, train_op, loss, loss_sent, loss_word, e, semi=False):
         
         train_data = self.data.train_data
@@ -208,7 +175,6 @@ class ParagraphSolver(object):
         '''
             for tensorboard
         '''
-
         for grad, var in grads_and_vars:
             try:
                 tf.summary.histogram(var.op.name, var)
@@ -250,26 +216,40 @@ class ParagraphSolver(object):
        
         # start training
         start_t = time.time()
-        with open(os.path.join(self.log_path, self.log_file), 'w') as f_log:
-            with open(os.path.join(self.result_path, self.score_file), 'w') as f_score:
-            
-                print "start training from %d epoch" % self.pretrained_epoch
-                for epoch in range(self.n_epoch):
+        f_log = open(os.path.join(self.log_path, self.log_file), 'w')
+        f_score = open(os.path.join(self.result_path, self.score_file), 'w')
+    
+        print ("start training from %d epoch" % self.pretrained_epoch)
 
-                    # skip epoch
-                    if epoch < self.pretrained_epoch:
-                        continue
+        for epoch in range(self.n_epoch):
 
-                    # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
-                    total_loss, total_sent_loss, total_word_loss = self.run_epoch(train_op, loss, loss_sent, loss_word, epoch+1)
+            # skip epoch
+            if epoch < self.pretrained_epoch:
+                continue
 
-
-                    self._print_logs( total_loss,
-                              total_sent_loss, 
-                              total_word_loss, 
-                              f_log, start_t, epoch)
+            # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
+            total_loss, total_sent_loss, total_word_loss = self.run_epoch(train_op, loss, loss_sent, loss_word, epoch+1)
 
 
+            self._print_logs( total_loss,
+                      total_sent_loss, 
+                      total_word_loss, 
+                      f_log, start_t, epoch)
+
+
+            if (epoch+1) % self.log_every == 0:
+
+                output_path = os.path.join( self.result_path, "val_candidate_" + str(epoch+1) + ".txt")
+                self._run_validate(sampled_paragraphs, pred_re, output_path)
+                final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
+                self._print_scores(final_scores, epoch, f_score)
+
+            if (epoch+1) % self.save_every == 0:
+                self._save_model(epoch)
+
+
+        f_log.close()
+        f_score.close()
 
     def inference(self):
 
