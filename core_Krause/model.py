@@ -9,6 +9,55 @@ import h5py
 from RNN import BasicLSTMCell
 
 import tensorflow as tf
+from tensorflow.python.layers.core import Dense
+
+class WeightInit():
+
+    def __init__(self):
+        self.random_uniform = tf.random_uniform_initializer(-0.1, 0.1)
+        self.xavier = tf.contrib.layers.xavier_initializer()
+
+class Attention():
+    
+    def __init__(self, num_boxes, attention_dim, reuse=False):
+        """
+        :param encoder_dim: feature size of encoded images
+        :param decoder_dim: size of decoder's RNN
+        :param attention_dim: size of the attention network
+        """
+        
+        self.w_init = WeightInit()   
+        
+        self.num_boxes = num_boxes
+        self.attention_dim = attention_dim
+
+        with tf.variable_scope('attention_layer', reuse=reuse):
+            self.linear_feature = Dense(attention_dim, kernel_initializer=self.w_init.xavier)
+            self.linear_hidden = Dense(attention_dim, kernel_initializer=self.w_init.xavier)
+            self.full_att = Dense(1, activation=tf.nn.relu, kernel_initializer=self.w_init.xavier)
+            self.softmax = tf.nn.softmax
+
+           
+
+    def __call__(self, img_features, decoder_hidden):
+        """
+        Forward propagation.
+        :param img_features: encoded images, a tensor of dimension (batch_size, num_pixels, encoder_dim)
+        :param decoder_hidden: previous decoder output, a tensor of dimension (batch_size, decoder_dim)
+        :return: attention weighted encoding, weights
+        """
+
+        features_proj = self.linear_feature(img_features)  # (batch_size, num_pixels, attention_dim)
+        att = self.linear_hidden(decoder_hidden)  # (batch_size, attention_dim)
+        
+        h_att = tf.nn.relu( features_proj + tf.expand_dims(att, 1)) # (N, L, D)
+        out_att = tf.reshape( self.full_att(tf.reshape(h_att, [-1, self.attention_dim])), [-1, self.num_boxes])   # (N, L)
+        alpha = self.softmax(out_att) # (batch_size, num_pixels)
+
+        context = tf.reduce_sum(img_features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
+
+        return context, alpha
+
 
 class Regions_Hierarchical():
     def __init__(self, word2idx,
@@ -59,11 +108,8 @@ class Regions_Hierarchical():
             self.selector = selector
             self.dropout = dropout
 
-            self.label_size = 7268
-            # self.label_size = 7699
-
-            # with tf.device('/cpu:0'):
-            #     self.Wemb = tf.Variable(tf.random_uniform([self.vocab_size, word_embed_dim], -0.1, 0.1), name='Wemb')
+           
+            self.attention_layer = Attention(num_boxes, feats_dim)  # attention network
 
             # regionPooling_W shape: 4096 x 1024
             # regionPooling_b shape: 1024
@@ -85,9 +131,7 @@ class Regions_Hierarchical():
             self.fc2_W = tf.Variable(tf.random_uniform([sentRNN_FC_dim, wordRNN_lstm_dim*2], -0.1, 0.1), name='fc2_W')
             self.fc2_b = tf.Variable(tf.zeros(wordRNN_lstm_dim*2), name='fc2_b')
 
-            self.label_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, self.label_size], -0.1, 0.1), name='label_W')
-            self.label_b = tf.Variable(tf.zeros(self.label_size), name='label_b')
-
+            
             # word LSTM
             # self.drop_prob = 0.0
             # word_cells = []
@@ -236,8 +280,6 @@ class Regions_Hierarchical():
         captions_length = tf.reduce_sum(captions_mask, 2)
 
         sents_mask = tf.to_float(tf.not_equal(self.num_distribution, 0))
-        
-        # captions_labels_masks = tf.to_float(tf.not_equal(self.num_distribution, self.pad_idx))
 
         # batch normalize feature vectors
         features = self._batch_norm(features, mode='train', name='dense_features', reuse=reuse)
@@ -262,7 +304,10 @@ class Regions_Hierarchical():
         with tf.variable_scope(tf.get_variable_scope()) as scope:
             for i in range(0, S_max):
                 print 'here %d' % i
-                context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
+
+                context, alpha = self.attention_layer(features, h)
+
+                # context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
                 alpha_list.append(alpha)
 
                 if self.selector:
@@ -326,25 +371,6 @@ class Regions_Hierarchical():
                         loss += loss_wordRNN * lambda_word
                         loss_word += loss_wordRNN
 
-            # tf_vars = {
-            #     "loss": loss,
-            #     "loss_sent": loss_sent,
-            #     "loss_label": loss_label,
-            #     "loss_word": loss_word,
-            #     "alpha_reg": alpha_reg,
-            # }
-
-            
-            # if semi == False:
-            #     # attention regularization
-            #     if self.alpha_c > 0:
-            #         sents_mask = tf.expand_dims(sents_mask, 2)
-            #         alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2)) * sents_mask  # (N, T, L)
-            #         alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
-            #         alpha_reg = self.alpha_c * tf.reduce_sum((self.S_max/4096.0 - alphas_all) ** 2)
-            #         tf_vars["loss"] += alpha_reg
-            #         tf_vars["alpha_reg"] = alpha_reg
-
         return loss, loss_sent, loss_word
 
     
@@ -374,7 +400,8 @@ class Regions_Hierarchical():
             if reuse == True:
                 tf.get_variable_scope().reuse_variables()
             
-            context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
+            context, alpha = self.attention_layer(features, h)
+            # context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
             alpha_list.append(alpha)
 
             if self.selector:

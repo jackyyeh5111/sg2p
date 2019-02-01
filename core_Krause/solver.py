@@ -87,33 +87,10 @@ class ParagraphSolver(object):
                     
         return sess, saver
 
-
-    def validate(self, sess, sampled_paragraphs, pred_re, output_path):
-        val_data = self.data.val_data
-
-        # validation per epoch
-        val_data.reset_pointer()
-
-        totol_paragraphs = []
-        for val_b in xrange(val_data.num_batch):
-            batch_data = val_data.next_batch()
-            feed_dict = {
-                     self.model.densecap_feats: batch_data["densecap_feats"]
-                }
-            _sampled_paragraphs, _pred = sess.run([sampled_paragraphs, pred_re], feed_dict)
-            val_paragraphs = decode_paragraphs(_sampled_paragraphs, _pred, self.data.idx2word, fixed_n_sent=self.fixed_n_sent)
-            totol_paragraphs.extend(val_paragraphs)
-            
-        output_paragraphs(totol_paragraphs, output_path)
-
-
     def backprop(self, loss, semi=False, reuse=False, max_gradient_norm=1.0):
         with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
             # Calculate and clip gradients
-            if semi == True:
-                params = [var for var in tf.trainable_variables() if "word_LSTM" in var.name ]
-            else:
-                params = tf.trainable_variables()
+            params = tf.trainable_variables()
 
             gradients = tf.gradients(loss, params)
             clipped_gradients, _ = tf.clip_by_global_norm( gradients, max_gradient_norm )
@@ -126,13 +103,8 @@ class ParagraphSolver(object):
         return train_op, grads_and_vars
 
    
-    def _print_model_vars(self):
-        print "-" * 50 + '\n'
-        model_vars = tf.trainable_variables()
-        slim.model_analyzer.analyze_vars(model_vars, print_info=True)
-        print "-" * 50 + '\n'
-
-    def run_epoch(self, train_op, loss, loss_sent, loss_word, e, semi=False):
+    
+    def run_epoch(self, train_op, loss, loss_sent, loss_word, epoch, semi=False):
         
         train_data = self.data.train_data
         train_data.reset_pointer()
@@ -167,7 +139,7 @@ class ParagraphSolver(object):
         
 
         summary = self.sess.run(self.summary_op, feed_dict)
-        self.summary_writer.add_summary(summary, e)
+        self.summary_writer.add_summary(summary, epoch)
 
         return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
 
@@ -188,6 +160,12 @@ class ParagraphSolver(object):
         self.summary_op = tf.summary.merge_all()
         self.summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
 
+    def _print_model_vars(self):
+        print ("-" * 50 + '\n')
+        model_vars = tf.trainable_variables()
+        slim.model_analyzer.analyze_vars(model_vars, print_info=True)
+        print ("-" * 50 + '\n')
+
 
     def _print_logs(self, total_loss, sent_loss, word_loss, f_log, start_t, epoch):
 
@@ -196,6 +174,28 @@ class ParagraphSolver(object):
         
         print (msg)
         f_log.write(msg + '\n')
+
+    def _run_validate(self, sampled_paragraphs, pred_re, output_path):
+        val_data = self.data.val_data
+
+        # validation per epoch
+        val_data.reset_pointer()
+
+        totol_paragraphs = []
+        for _ in tqdm(range(val_data.num_batch)):
+           
+            batch_data = val_data.next_batch()
+            feed_dict = {
+                     self.model.densecap_feats: batch_data["densecap_feats"]
+                }
+            
+            _sampled_paragraphs, _pred = self.sess.run([sampled_paragraphs, pred_re], feed_dict)
+            val_paragraphs = decode_paragraphs(_sampled_paragraphs, _pred, self.data.idx2word, fixed_n_sent=self.fixed_n_sent)
+            totol_paragraphs.extend(val_paragraphs)
+            
+        output_paragraphs(totol_paragraphs, output_path)
+
+
 
     def train(self):
         
@@ -210,8 +210,6 @@ class ParagraphSolver(object):
         # init session
         self.sess, self.saver = self.init_session()
         self._print_model_vars()
-
-        # self.model_summary()
 
        
         # start training
@@ -250,6 +248,9 @@ class ParagraphSolver(object):
 
         f_log.close()
         f_score.close()
+
+
+
 
     def inference(self):
 
