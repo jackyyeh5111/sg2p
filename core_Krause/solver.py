@@ -18,7 +18,7 @@ tf_config.gpu_options.allow_growth = True
 
 
 class ParagraphSolver(object):
-    def __init__(self, model, data, config, opts):
+    def __init__(self, model, data, args):
 
         self.save_every = 20
         self.save_every_aftere350epoch = 5
@@ -169,8 +169,9 @@ class ParagraphSolver(object):
     #     return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
 
 
-    def run_epoch(self, sess, train_data, loss_dict, train_op, loss, loss_sent, loss_word, e, semi=False):
-        ####3
+    def run_epoch(self, train_op, loss, loss_sent, loss_word, e, semi=False):
+        
+        train_data = self.data.train_data
         train_data.reset_pointer()
 
         total_loss = 0
@@ -190,7 +191,7 @@ class ParagraphSolver(object):
                  # self.model.caption_labels: batch_data["caption_labels"],
             }
         
-            _, _loss, _loss_sent, _loss_word = sess.run(
+            _, _loss, _loss_sent, _loss_word = self.sess.run(
                 [train_op, 
                  loss, 
                  loss_sent,             
@@ -202,11 +203,7 @@ class ParagraphSolver(object):
             total_word_loss += _loss_word
         
 
-        # average    
-        for key in loss_dict.keys():
-            loss_dict[key] = loss_dict[key] / train_data.num_batch
-
-        summary = sess.run(self.summary_op, feed_dict)
+        summary = self.sess.run(self.summary_op, feed_dict)
         self.summary_writer.add_summary(summary, e)
 
         return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
@@ -249,7 +246,7 @@ class ParagraphSolver(object):
         self._summary(grads_and_vars, loss=loss, loss_sent=loss_sent, loss_word=loss_word)
 
         # init session
-        sess, saver = self.init_session()
+        self.sess, self.saver = self.init_session()
         
         self.model_summary()
 
@@ -298,19 +295,19 @@ class ParagraphSolver(object):
 
 
                     # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
-                    total_loss, total_sent_loss, total_word_loss = self.run_epoch(sess, train_data, loss_dict, train_op, loss, loss_sent, loss_word, epoch+1)
+                    total_loss, total_sent_loss, total_word_loss = self.run_epoch(train_op, loss, loss_sent, loss_word, epoch+1)
 
 
-                    # self._print_logs( total_loss,
-                    #           total_sent_loss, 
-                    #           total_word_loss, 
-                    #           f_log, start_t, epoch)
+                    self._print_logs( total_loss,
+                              total_sent_loss, 
+                              total_word_loss, 
+                              f_log, start_t, epoch)
 
 
                     # print loss 
-                    msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % \
-                          (epoch+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_word_loss"], time.time() - start_t)
-                    print msg1
+                    # msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % \
+                    #       (epoch+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_word_loss"], time.time() - start_t)
+                    # print msg1
                     # log.write(msg1 + '\n')
 
 
