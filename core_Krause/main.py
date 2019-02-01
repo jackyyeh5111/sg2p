@@ -1,108 +1,121 @@
+import argparse
 import tensorflow as tf
 from model import Regions_Hierarchical
-from config import Config
 import json
 from data_loader import TrainingData, ValidateData, TestData
 from solver import ParagraphSolver
-from optparse import OptionParser
 import numpy as np
+from path_config import PathConfig
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+def load_args():
+    parser = argparse.ArgumentParser()
 
-def load_opts():
+    # system config
+    parser.add_argument('--no-cuda', action='store_true', default=False,
+                        help='disables CUDA training')
+    parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
+    parser.add_argument("-p", dest="process_name", type=str, help="process name")
+    parser.add_argument("--model_name", type=str, default=None, 
+                        help="The directory of save model.")
+    parser.add_argument("--fixed_n_sent", action="store_true", default=False,  
+                        help="generatel fixed number(S_max) of sent of a paragraph while inferencing")
+    parser.add_argument("--S_max", type=int, default=6, 
+                        help="max sentence number per paragraph")
+    parser.add_argument("--N_max", type=int, default=30, 
+                        help="max words number per sentence")
+    parser.add_argument("--early_stop", action="store_true", default=False,  
+                        help="early stopping strategy will be used in training")
+    parser.add_argument("--ref_test_sents", action="store_true", default=False)
+    parser.add_argument("--save_every", type=int, default=50)
+    parser.add_argument("--log_every", type=int, default=20)
+    parser.add_argument("--checkpoint", type=str, default=None, help="The directory of save model.")
 
-    op = OptionParser()
+    # model parameters
+    parser.add_argument("--update_rule", type=str, default="adam")
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--n_epochs", type=int, default=600)
+    parser.add_argument("--sentRNN_lstm_dim", type=int, default=512)
+    parser.add_argument("--wordRNN_lstm_dim", type=int, default=512)
+    parser.add_argument("--num_boxes", type=int, default=50)
+    parser.add_argument("--feats_dim", type=int, default=4096)
+    parser.add_argument("--attention_dim", type=int, default=4096)
+    parser.add_argument("--project_dim", type=int, default=1024)
+    parser.add_argument('--word_lstm_layer', type=int, default=1,
+                        help='the num layer for word rnn')
+    parser.add_argument('--sent_lstm_layer', type=int, default=1,
+                        help='the num layer for sentence rnn')
+    parser.add_argument('--topic_dim', type=int, default=1024,
+                        help='the size for topic vector')
+    parser.add_argument('--pooling_dim', type=int, default=1024,
+                        help='the size for pooling vector')
+    parser.add_argument('--embed_dim', type=int, default=300)
+    parser.add_argument('--lambda_sentence', type=int, default=5,
+                        help='the cost lambda for sentence loss function')
+    parser.add_argument('--lambda_word', type=int, default=1,
+                        help='the cost lambda for word loss function')
 
-    op.add_option("-g", dest="gpu_id", type=str, default='0')
+    parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--test_batch_size", type=int, default=256)
+      
 
-    op.add_option("-m", dest="mode", type=str,  
-                  help="have three mode: 'train', 'infer', 'interact'.")
-    op.add_option("-p",
-                  dest="process_name", type=str,
-                  help="process name")
-    op.add_option("--model_name",
-                  dest="model_name", type=str, default=None,
-                  help="The directory of save model.")
-    op.add_option("--update_rule",
-                  dest="update_rule", type=str, default="adam")
+    args = parser.parse_args()
 
-    op.add_option("--fixed_n_sent",
-                  dest="fixed_n_sent", action="store_true", default=False, 
-                  help="generate fixed number(S_max) of sent of a paragraph while inferencing")
-    op.add_option("--add_multi_label",
-                  dest="add_multi_label", action="store_true", default=False)
-    op.add_option("--S_max",
-                  dest="S_max", type=int, default=6,
-                  help="max sentence number in a paragraph")
-    op.add_option("--early_stop",
-                  dest="early_stop", action="store_true", default=False, 
-                  help="early stopping strategy will be used in training")
-    op.add_option("--transfered_model_name",
-                  dest="transfered_model_name", type=str, default=None,
-                  help="The directory of pretrained model or transfer parameters.")
-    op.add_option("--semi_training",
-                  dest="semi_training", action="store_true", default=False, 
-                  help="training with COCO dataset")
-    op.add_option("--ref_test_sents",
-                  dest="ref_test_sents", action="store_true", default=False)
-
-    op.add_option("--sentRNN_lstm_dim",
-                  dest="sentRNN_lstm_dim", type=int, default=512)
-    op.add_option("--wordRNN_lstm_dim",
-                  dest="wordRNN_lstm_dim", type=int, default=512)
-
+    if not args.mode:  
+        parser.error('mode is not given')
     
+    if not args.process_name:  
+        parser.error('process_name is not given')
+    
+    if args.mode == "infer" and not args.model_name:
+        parser.error('model is not given')
 
-    (opts, args) = op.parse_args()
-    if not opts.mode:  op.error('mode is not given')
-    if not opts.process_name:  op.error('process_name is not given')
-    if opts.mode == "infer": 
-        if not opts.model_name:  op.error('model is not given')
+    return args
 
-    return opts
 
 class Data():
-    def __init__(self, config, mode):     
+    def __init__(self, args):     
+
+        self.args = args
         
-        with open(config.word2index_path, 'r') as f:
+        with open(args.path.word2idx_path, 'r') as f:
             self.word2idx = json.load(f)
 
-        with open(config.index2word_path, 'r') as f:
+        with open(args.path.idx2word_path, 'r') as f:
             self.idx2word = json.load(f)
 
+        self.embed_matrix = np.load( args.path.embed_matrix_path )
 
-        self.embed_matrix = np.load(config.pretrained_embed_matrix_path)
+        if args.mode == "train":
+            # pass
+          self.train_data = TrainingData(args)
+          self.val_data = TestData(args)
 
-        if mode == "train":
-          # pass
-            self.train_data = TrainingData(config, batch_size=config.batch_size)
-            # self.val_data = TestData(config, batch_size=config.test_batch_size)
-
-        # elif mode == "infer":
-        #     self.test_data = TestData(config, batch_size=config.test_batch_size)
-
+        # else args.mode == "infer":
+        #   self.test_data = TestData(batch_size=args.test_batch_size, self.id2paragraph)
+        
 
 def main():
     
-    opts = load_opts()
+    args = load_args()
+    args.path = PathConfig()
 
-    config = Config()
-    data = Data(config, opts.mode)
+    data = Data(args)
 
     model = Regions_Hierarchical( word2idx = data.word2idx, 
-                                  batch_size = config.batch_size, 
+                                  batch_size = args.batch_size, 
                                   pretrained_embed_matrix = data.embed_matrix, 
-                                  sentRNN_lstm_dim=opts.sentRNN_lstm_dim,
-                                  wordRNN_lstm_dim=opts.wordRNN_lstm_dim,
-                                  S_max = opts.S_max)
+                                  sentRNN_lstm_dim=args.sentRNN_lstm_dim,
+                                  wordRNN_lstm_dim=args.wordRNN_lstm_dim)
 
-    solver = ParagraphSolver(model, data, config, opts)
 
-    if opts.mode == "train":
+    solver = ParagraphSolver(model, data, args)
+
+    if args.mode == "train":
         solver.train()
-    elif opts.mode == "infer":
+    elif args.mode == "infer":
         solver.inference()
     
 

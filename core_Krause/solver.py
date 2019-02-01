@@ -8,7 +8,7 @@ from util import *
 import sys
 os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference
 from evaluate import evaluate
-from data_loader import SemiTrainingData, TrainingData
+from data_loader import TrainingData
 from tqdm import tqdm
 import tensorflow.contrib.slim as slim
 # from bleu import evaluate
@@ -20,35 +20,31 @@ tf_config.gpu_options.allow_growth = True
 class ParagraphSolver(object):
     def __init__(self, model, data, args):
 
-        self.save_every = 20
+        self.args = args
+
+        self.save_every = self.args.save_every
         self.save_every_aftere350epoch = 5
+        self.log_every = self.args.log_every
+        
         self.early_stop_epoch = 10
-        self.early_stop = opts.early_stop
-        self.ref_test_sents = opts.ref_test_sents
+        self.early_stop = self.args.early_stop
+        self.ref_test_sents = self.args.ref_test_sents
 
-        self.config = config
         self.model = model
-        self.process_name = opts.process_name
-        self.pretrained_model = opts.model_name
+        self.process_name = self.args.process_name
+        self.pretrained_model = self.args.model_name
         self.data = data
-        self.fixed_n_sent = opts.fixed_n_sent
-        self.transfered_model_name = opts.transfered_model_name
-        self.semi_training = opts.semi_training
+        self.fixed_n_sent = self.args.fixed_n_sent
+        
+        self.n_epoch = self.args.n_epochs
+        self.batch_size = self.args.batch_size
+        self.test_batch_size = self.args.test_batch_size
+        self.learning_rate = self.args.learning_rate
+        self.log_path = os.path.join(self.args.path.log_dir, self.process_name) 
+        self.model_path = os.path.join(self.args.path.model_dir, self.process_name)
+        self.result_path = os.path.join(self.args.path.result_dir, self.process_name)
+        self.update_rule = self.args.update_rule
 
-        self.T_stop = config.T_stop
-        self.n_epoch = config.n_epoch
-        self.batch_size = config.batch_size
-        self.test_batch_size = config.test_batch_size
-        self.learning_rate = config.learning_rate
-        self.log_path = os.path.join(config.log_dir, self.process_name) 
-        self.model_path = os.path.join(config.model_dir, self.process_name)
-        self.result_path = os.path.join(config.result_dir, self.process_name)
-        self.update_rule = opts.update_rule
-
-
-        if self.semi_training:
-            self.semi_dense_feats_files = config.semi_dense_feats_files
-            self.semi_captions_files = config.semi_captions_files
 
         # get pretrained_epoch
         if self.pretrained_model is not None:
@@ -250,20 +246,6 @@ class ParagraphSolver(object):
         
         self.model_summary()
 
-        ###################################
-        tf_vars = {}
-        tf_vars['loss'] = loss
-        tf_vars['loss_sent'] = loss_sent
-        tf_vars['loss_word'] = loss_word
-        
-        # train_op, grads_and_vars = self.backprop(tf_vars["loss"])
-
-        tf_vars["sampled_paragraphs"] = sampled_paragraphs
-        tf_vars["pred_re"] = pred_re
-        tf_vars["train_op"] = train_op
-
-        ###################################
-
         # for early stop (METEOR + CIDEr)
         threshold = 0 
         threshold_no_change_epoch = 0
@@ -285,15 +267,6 @@ class ParagraphSolver(object):
                     if epoch < self.pretrained_epoch:
                         continue
 
-                    loss_dict = {
-                        "total_loss": 0.0,
-                        "total_label_loss": 0.0,
-                        "total_sent_loss": 0.0,
-                        "total_word_loss": 0.0,
-                        "alpha_reg": 0.0,
-                    }
-
-
                     # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
                     total_loss, total_sent_loss, total_word_loss = self.run_epoch(train_op, loss, loss_sent, loss_word, epoch+1)
 
@@ -303,51 +276,6 @@ class ParagraphSolver(object):
                               total_word_loss, 
                               f_log, start_t, epoch)
 
-
-                    # print loss 
-                    # msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % \
-                    #       (epoch+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_word_loss"], time.time() - start_t)
-                    # print msg1
-                    # log.write(msg1 + '\n')
-
-
-                    # early stopping
-                    # if threshold < (final_scores['METEOR'] + final_scores['CIDEr']):
-                    #     threshold = final_scores['METEOR'] + final_scores['CIDEr']
-                    #     threshold_no_change_epoch = 0
-                    # else:
-                    #     threshold_no_change_epoch += 1
-
-                    # if self.early_stop == True:
-                    #     if threshold_no_change_epoch >= self.early_stop_epoch:
-                    #         saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                    #         print "model-%s saved." % (e+1)
-                    #         break
-
-                    # save model's parameters and validate
-                    # if ((e+1) % self.save_every == 0 and (e+1) < 350) or \
-                    #    ((e+1) % self.save_every_aftere350epoch == 0 and (e+1) >= 350):  
-                        
-                    #     # validate
-                    #     output_path = os.path.join( self.result_path, "val_candidate_" + str(e+1) + "_txt")
-                    #     self.validate(sess, sampled_paragraphs, pred_re, output_path)
-
-                    #     # print evaluation score
-                    #     final_scores = evaluate(get_scores=True, reference_path="../data/reference.txt", candidate_path=output_path)
-                    #     msg2 = "epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" \
-                    #         % (e+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
-                    #         final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
-                    #     print msg2
-                    #     log.write(msg2 + '\n')
-                    #     print "-"*50
-
-                    #     f_score.write(msg2 + '\n')
-
-                    #     # save model
-                    #     saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                    #     print "model-%s saved." % (e+1)
-
-                
 
 
     def inference(self):
