@@ -59,6 +59,123 @@ class Attention():
         return context, alpha
 
 
+class SentRNN():
+    def __init__(self,
+                 hidden_size,
+                 lstm_layer,
+                 wordRNN_lstm_dim,
+                 pooling_dim,
+                 feats_dim,
+                 topic_dim,
+                 num_boxes,
+                 dropout_ratio=0.5,
+                 ctx2out=True,
+                 S_max=6,
+                 reuse=False):
+        
+        self.hidden_size = hidden_size
+        self.lstm_layer = lstm_layer
+        self.topic_dim = topic_dim
+        self.ctx2out = ctx2out
+        self.feats_dim = feats_dim
+        self.num_boxes = num_boxes
+        self.S_max = S_max
+
+        self.w_init = WeightInit()   
+
+        self.dropout_ratio = dropout_ratio
+
+        with tf.variable_scope('SentRNN', reuse=reuse):
+            self.init_h = Dense(hidden_size, kernel_initializer=self.w_init.xavier)
+            self.init_c = Dense(hidden_size, kernel_initializer=self.w_init.xavier)
+        
+            self.w_h = Dense(hidden_size, kernel_initializer=self.w_init.xavier)
+            self.w_ctx2out = Dense(hidden_size, kernel_initializer=self.w_init.xavier)
+
+            self.attention_layer = Attention(num_boxes, feats_dim)  # attention network
+
+            self.sent_LSTM = tf.nn.rnn_cell.LSTMCell(self.hidden_size, state_is_tuple=True, initializer=tf.orthogonal_initializer())
+
+            self.logistic = Dense(2, kernel_initializer=self.w_init.random_uniform)
+        
+            self.fc1 = Dense(topic_dim, activation=tf.nn.relu, kernel_initializer=self.w_init.random_uniform, name='fc1')
+            self.fc2 = Dense(wordRNN_lstm_dim*2, activation=tf.nn.relu, kernel_initializer=self.w_init.random_uniform, name='fc2')
+           
+    
+    def _init_hidden_state(self, img_features, reuse=False):
+        """
+        Creates the initial hidden and cell states for the decoder's LSTM based on the encoded images.
+        :param img_features: encoded images, a tensor of dimension (batch_size, num_pixels, encoder_dim)
+        :return: hidden state, cell state
+        """
+        with tf.variable_scope('initial_lstm', reuse=reuse):
+            mean_img_features = tf.reduce_mean(img_features, 1)
+            h = self.init_h(mean_img_features)  # (batch_size, decoder_dim)
+            c = self.init_c(mean_img_features)
+            return c, h
+
+
+    def _decode_step(self, h, context, dropout, reuse=False):
+
+        with tf.variable_scope('sent_decode_step', reuse=reuse):
+
+            if dropout:
+                h = tf.nn.dropout(h, self.dropout_ratio)
+            
+            h_logits = self.w_h(h)
+
+            if self.ctx2out:
+                context = self.w_ctx2out(context)
+                h_logits += context
+                
+            h_logits = tf.nn.tanh(h_logits)
+
+            if dropout:
+                h_logits = tf.nn.dropout(h_logits, self.dropout_ratio)
+
+        return h_logits
+
+    def _batch_norm(self, x, mode, name=None, reuse=None):
+        return tf.contrib.layers.batch_norm(inputs=x,
+                                            decay=0.95,
+                                            center=True,
+                                            scale=True,
+                                            is_training=(mode=='train'),
+                                            updates_collections=None,
+                                            scope=name, 
+                                            reuse=reuse)
+
+
+
+    def __call__(self, img_feats, hidden_state=None, mode='train', reuse=None):
+
+        assert mode in ['train', 'test']
+
+        dropout = True if mode == 'train' else False
+
+        img_feats = self._batch_norm(img_feats, mode=mode, name='feats_batch_norm', reuse=reuse)
+
+        if hidden_state == None:
+            c, h = self._init_hidden_state(img_feats)  # (batch_size, decoder_dim)
+        else:
+            c, h = hidden_state
+
+        context, alpha = self.attention_layer(img_feats, h)
+        
+        _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
+
+        sent_output = self._decode_step(h, context, dropout)
+
+        pred_stop = self.logistic(sent_output)
+            
+        _hidden = tf.nn.relu( self.fc1(sent_output) )
+
+        topic_vec = tf.nn.relu( self.fc2( _hidden ) )
+
+        return pred_stop, topic_vec, context, alpha, (h, c)
+
+
+
 class Regions_Hierarchical():
     def __init__(self, word2idx,
                        batch_size,
@@ -68,7 +185,7 @@ class Regions_Hierarchical():
                        num_boxes=50,
                        feats_dim=4096,
                        project_dim=1024,
-                       sentRNN_FC_dim=1024,
+                       topic_dim=1024,
                        S_max=6,
                        N_max=30,
                        sentRNN_numlayer=1, 
@@ -96,9 +213,18 @@ class Regions_Hierarchical():
             self.ctx2out = ctx2out
             self.alpha_c = alpha_c
 
+            self.sentRNN = SentRNN(  sentRNN_lstm_dim,
+                                     sentRNN_numlayer,
+                                     wordRNN_lstm_dim,
+                                     project_dim,
+                                     feats_dim,
+                                     topic_dim,
+                                     num_boxes)
+
+
 
             self.sentRNN_lstm_dim = sentRNN_lstm_dim 
-            self.sentRNN_FC_dim = sentRNN_FC_dim 
+            self.topic_dim = topic_dim 
             self.wordRNN_lstm_dim = wordRNN_lstm_dim 
             self.encoder_lstm_dim = encoder_lstm_dim
 
@@ -126,9 +252,9 @@ class Regions_Hierarchical():
 
             # fc1_W: 512 x 1024, fc1_b: 1024
             # fc2_W: 1024 x 1024, fc2_b: 1024
-            self.fc1_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, sentRNN_FC_dim], -0.1, 0.1), name='fc1_W')
-            self.fc1_b = tf.Variable(tf.zeros(sentRNN_FC_dim), name='fc1_b')
-            self.fc2_W = tf.Variable(tf.random_uniform([sentRNN_FC_dim, wordRNN_lstm_dim*2], -0.1, 0.1), name='fc2_W')
+            self.fc1_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, topic_dim], -0.1, 0.1), name='fc1_W')
+            self.fc1_b = tf.Variable(tf.zeros(topic_dim), name='fc1_b')
+            self.fc2_W = tf.Variable(tf.random_uniform([topic_dim, wordRNN_lstm_dim*2], -0.1, 0.1), name='fc2_W')
             self.fc2_b = tf.Variable(tf.zeros(wordRNN_lstm_dim*2), name='fc2_b')
 
             
@@ -209,12 +335,6 @@ class Regions_Hierarchical():
             context = tf.multiply(beta, context, name='selected_context')
             return context, beta
 
-    def _word_embedding(self, inputs, reuse=False):
-        with tf.variable_scope('word_embedding', reuse=reuse):
-            w = tf.get_variable('w', [self.V, self.M], initializer=self.embed_initializer)
-            x = tf.nn.embedding_lookup(w, inputs, name='word_vector')  # (N, T, M) or (N, M)
-            return x
-
     def _decode_lstm(self, h, context, dropout=False, reuse=False):
         # h.shape (batch_size, time_steps, hidden_cell_sizes)
         # context.shape (batch_size, 4096)
@@ -269,12 +389,8 @@ class Regions_Hierarchical():
             
     def build_model(self, S_max, semi=False, reuse=False):
 
-        features = self.densecap_feats # (50, 4096)
-
-        if semi == True:
-            captions = self.coco_captions
-        else:
-            captions = self.captions
+        features = self.densecap_feats # (50, 4096)    
+        captions = self.captions
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
@@ -284,9 +400,9 @@ class Regions_Hierarchical():
         # batch normalize feature vectors
         features = self._batch_norm(features, mode='train', name='dense_features', reuse=reuse)
 
-        c, h = self._get_initial_lstm(features=features, reuse=reuse)
+        # c, h = self._get_initial_lstm(features=features, reuse=reuse)
         # x = self._word_embedding(inputs=captions_in)
-        features_proj = self._project_features(features=features, reuse=reuse)
+        # features_proj = self._project_features(features=features, reuse=reuse)
 
         
         loss = 0.0
@@ -301,43 +417,45 @@ class Regions_Hierarchical():
         # reviewer_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.encoder_lstm_dim)
        
         print 'Start build model:'
+        sent_hidden_state = None
         with tf.variable_scope(tf.get_variable_scope()) as scope:
             for i in range(0, S_max):
                 print 'here %d' % i
 
-                context, alpha = self.attention_layer(features, h)
+                # context, alpha = self.attention_layer(features, h)
 
                 # context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
-                alpha_list.append(alpha)
+                # alpha_list.append(alpha)
 
-                if self.selector:
-                    context, beta = self._selector(context, h, reuse=reuse or (i!=0))
+                # if self.selector:
+                #     context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
+                pred_stop, topic_vec, context, alpha, sent_hidden_state = self.sentRNN(features, sent_hidden_state, reuse=(i!=0))
 
-                with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
-                    _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
+                # with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
+                #     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
                 
-                sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
+                # sent_output = self._decode_lstm(h, context, dropout=self.dropout, reuse=reuse or (i!=0))
 
-                with tf.name_scope('fc1'):
-                    hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
-                with tf.name_scope('fc2'):
-                    sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
+                # with tf.name_scope('fc1'):
+                #     hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
+                # with tf.name_scope('fc2'):
+                #     sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
 
                 # sent loss
                 if semi == False:
                     with tf.name_scope('sent_loss'):
-                        sentRNN_logistic_mu = tf.nn.xw_plus_b( sent_output, self.logistic_Theta_W, self.logistic_Theta_b )
+                        # sentRNN_logistic_mu = tf.nn.xw_plus_b( sent_output, self.logistic_Theta_W, self.logistic_Theta_b )
                         sentRNN_label = tf.stack([ 1 - self.num_distribution[:, i], self.num_distribution[:, i] ])
                         sentRNN_label = tf.transpose(sentRNN_label)
-                        sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=sentRNN_logistic_mu, labels=sentRNN_label)
+                        sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=pred_stop, labels=sentRNN_label)
                         sentRNN_loss = tf.reduce_sum(sentRNN_loss)/self.batch_size
                         loss += sentRNN_loss * lambda_sent
                         loss_sent += sentRNN_loss
                         
 
                 # wordRNN state
-                topic = tf.contrib.rnn.LSTMStateTuple(sent_topic_vec[:, 0:self.wordRNN_lstm_dim], sent_topic_vec[:, self.wordRNN_lstm_dim:])
+                topic = tf.contrib.rnn.LSTMStateTuple(topic_vec[:, 0:self.wordRNN_lstm_dim], topic_vec[:, self.wordRNN_lstm_dim:])
                 # word_c, word_h = [topic] * self.wordRNN_numlayer
                 word_c, word_h = topic
 
@@ -381,9 +499,9 @@ class Regions_Hierarchical():
         # batch normalize feature vectors
         features = self._batch_norm(features, mode='test', name='dense_features', reuse=reuse)
 
-        c, h = self._get_initial_lstm(features=features, reuse=reuse)
+        # c, h = self._get_initial_lstm(features=features, reuse=reuse)
         # x = self._word_embedding(inputs=captions_in)
-        features_proj = self._project_features(features=features, reuse=reuse)
+        # features_proj = self._project_features(features=features, reuse=reuse)
 
 
         # save the generated paragraph to list, here I named generated_sents
@@ -394,40 +512,41 @@ class Regions_Hierarchical():
         
 
         # Start build the generation model
-        print 'Start build the generation model: '
+        print ('Start build the generation model:')
+        sent_hidden_state = None
         for i in range(0, self.S_max):
 
             if reuse == True:
                 tf.get_variable_scope().reuse_variables()
             
-            context, alpha = self.attention_layer(features, h)
+            # context, alpha = self.attention_layer(features, h)
             # context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
-            alpha_list.append(alpha)
+            # alpha_list.append(alpha)
 
-            if self.selector:
-                context, beta = self._selector(context, h, reuse=reuse or (i!=0))
+            # if self.selector:
+            #     context, beta = self._selector(context, h, reuse=reuse or (i!=0))
 
+            pred_stop, topic_vec, context, alpha, sent_hidden_state = self.sentRNN(features, sent_hidden_state, reuse=(i!=0))
+            # with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
+            #     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
 
-            with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
-                _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
+            # sent_output = self._decode_lstm(h, context, reuse=reuse or (i!=0))
 
-            sent_output = self._decode_lstm(h, context, reuse=reuse or (i!=0))
-
-            with tf.name_scope('fc1'):
-                hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
-            with tf.name_scope('fc2'):
-                sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
+            # with tf.name_scope('fc1'):
+            #     hidden1 = tf.nn.relu( tf.matmul(sent_output, self.fc1_W) + self.fc1_b )
+            # with tf.name_scope('fc2'):
+            #     sent_topic_vec = tf.nn.relu( tf.matmul(hidden1, self.fc2_W) + self.fc2_b )
 
             
-            sentRNN_logistic_mu = tf.nn.xw_plus_b(sent_output, self.logistic_Theta_W, self.logistic_Theta_b)
-            pred = tf.nn.softmax(sentRNN_logistic_mu)
+            # sentRNN_logistic_mu = tf.nn.xw_plus_b(sent_output, self.logistic_Theta_W, self.logistic_Theta_b)
+            pred = tf.nn.softmax(pred_stop)
             pred_re.append(pred)
 
             # save the generated sentence to list, named generated_sent
             generated_sent = []
 
             # wordRNN state
-            topic = tf.contrib.rnn.LSTMStateTuple(sent_topic_vec[:, 0:self.wordRNN_lstm_dim], sent_topic_vec[:, self.wordRNN_lstm_dim:])
+            topic = tf.contrib.rnn.LSTMStateTuple(topic_vec[:, 0:self.wordRNN_lstm_dim], topic_vec[:, self.wordRNN_lstm_dim:])
             # word_c, word_h = [topic] * self.wordRNN_numlayer
             word_c, word_h = topic
                 

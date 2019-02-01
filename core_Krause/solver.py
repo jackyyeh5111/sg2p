@@ -167,6 +167,15 @@ class ParagraphSolver(object):
         print ("-" * 50 + '\n')
 
 
+    def _print_scores(self, final_scores, epoch, f_score):
+        msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" 
+                % (epoch+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+                final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr']))
+
+        print (msg)        
+        f_score.write(msg + '\n')
+
+
     def _print_logs(self, total_loss, sent_loss, word_loss, f_log, start_t, epoch):
 
         msg = ('Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % 
