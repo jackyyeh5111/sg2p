@@ -9,6 +9,7 @@ import sys
 os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference
 from evaluate import evaluate
 from data_loader import SemiTrainingData, TrainingData
+from tqdm import tqdm
 import tensorflow.contrib.slim as slim
 # from bleu import evaluate
 
@@ -88,22 +89,6 @@ class ParagraphSolver(object):
             print "Start training with pretrained Model.."
             saver.restore(sess, os.path.join(self.model_path, self.pretrained_model) )
                     
-
-        elif self.transfered_model_name is not None:
-
-            variables = slim.get_variables_to_restore()
-            variables_to_restore = [v for v in variables \
-                if "label" not in v.name 
-                and "logistic_Theta" not in v.name
-                and "beta" not in v.name ] 
-            
-            saver_restore = tf.train.Saver(variables_to_restore)
-
-            print "Start training with pretrained Model.."
-            saver_restore.restore(sess, self.transfered_model_name )
-            
-            saver = tf.train.Saver(max_to_keep=max_to_keep) 
-
         return sess, saver
 
 
@@ -151,110 +136,136 @@ class ParagraphSolver(object):
         slim.model_analyzer.analyze_vars(model_vars, print_info=True)
         print "-" * 50 + '\n'
 
-    def run_epoch(self, sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e, semi=False):
+    # def _run_epoch(self, train_op, loss, loss_sent, loss_word):
 
+    #     train_data = self.data.train_data
+    #     train_data.reset_pointer()
+
+    #     total_loss = 0
+    #     total_sent_loss = 0
+    #     total_word_loss = 0
+
+    #     total_step = train_data.num_batch
+        
+    #     for step in tqdm(range(total_step)):
+
+    #         batch_data = train_data.next_batch()
+
+    #         feed_dict = {
+    #              self.model.densecap_feats: batch_data["densecap_feats"],
+    #              self.model.num_distribution: batch_data["num_distribution"],
+    #              self.model.captions: batch_data["captions"],
+    #         }
+            
+    #         _, _summary, _loss, _loss_sent, _loss_word = self.sess.run(
+    #             [train_op, self.summary_op, loss, loss_sent,loss_word], feed_dict)
+
+    #         total_loss += _loss
+    #         total_sent_loss += _loss_sent
+    #         total_word_loss += _loss_word
+        
+    #         self.summary_writer.add_summary(_summary, step)
+
+    #     return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
+
+
+    def run_epoch(self, sess, train_data, loss_dict, train_op, loss, loss_sent, loss_word, e, semi=False):
+        ####3
         train_data.reset_pointer()
 
-        for i in range(train_data.num_batch):
+        total_loss = 0
+        total_sent_loss = 0
+        total_word_loss = 0
+
+        total_step = train_data.num_batch
+
+        for i in tqdm(range(train_data.num_batch)):
             batch_data = train_data.next_batch()
 
-            if semi == True:
-                feed_dict = {
-                     self.model.densecap_feats: batch_data["densecap_feats"],
-                     self.model.coco_captions: batch_data["captions"],
-                     # self.model.caption_labels: batch_data["caption_labels"],
-                }
-
-                _, _loss, _loss_label, _loss_word = sess.run(
-                    [tf_vars["s_train_op"], 
-                     tf_vars["s_loss"], 
-                     tf_vars["s_loss_label"], 
-                     tf_vars["s_loss_word"]], feed_dict)
-
-            else:
-                feed_dict = {
-                     self.model.densecap_feats: batch_data["densecap_feats"],
-                     self.model.num_distribution: batch_data["num_distribution"],
-                     self.model.captions: batch_data["captions"],
-                     # self.model.caption_labels: batch_data["caption_labels"],
-                }
-            
-                _, _loss, _loss_sent, _loss_label, _loss_word, _alpha_reg = sess.run(
-                    [tf_vars["train_op"], 
-                     tf_vars["loss"], 
-                     tf_vars["loss_sent"], 
-                     tf_vars["loss_label"], 
-                     tf_vars["loss_word"],
-                     tf_vars["alpha_reg"]], feed_dict)
+        
+            feed_dict = {
+                 self.model.densecap_feats: batch_data["densecap_feats"],
+                 self.model.num_distribution: batch_data["num_distribution"],
+                 self.model.captions: batch_data["captions"],
+                 # self.model.caption_labels: batch_data["caption_labels"],
+            }
+        
+            _, _loss, _loss_sent, _loss_word = sess.run(
+                [train_op, 
+                 loss, 
+                 loss_sent,             
+                 loss_word], feed_dict)
 
 
-                loss_dict["total_sent_loss"] += _loss_sent
-                loss_dict["alpha_reg"] += _alpha_reg
-
-            loss_dict["total_loss"] += _loss
-            loss_dict["total_label_loss"] += _loss_label
-            loss_dict["total_word_loss"] += _loss_word
+            total_sent_loss += _loss_sent
+            total_loss += _loss
+            total_word_loss += _loss_word
         
 
         # average    
         for key in loss_dict.keys():
             loss_dict[key] = loss_dict[key] / train_data.num_batch
 
-        summary = sess.run(summary_op, feed_dict)
-        summary_writer.add_summary(summary, e)
+        summary = sess.run(self.summary_op, feed_dict)
+        self.summary_writer.add_summary(summary, e)
 
-        return loss_dict
+        return total_loss/total_step, total_sent_loss/total_step, total_word_loss/total_step
 
-    def train(self):
-        
-        # build graphs for training model and sampling captions
-        # This scope fixed things!!
-        with tf.variable_scope(tf.get_variable_scope()):
-            _tf_vars = self.model.build_model(S_max=6)
-            sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
-        
-        tf_vars = {}
-        for key, value in _tf_vars.iteritems():
-            tf_vars[key] = value
-
-        train_op, grads_and_vars = self.backprop(tf_vars["loss"])
-
-        tf_vars["sampled_paragraphs"] = sampled_paragraphs
-        tf_vars["pred_re"] = pred_re
-        tf_vars["train_op"] = train_op
-
-        if self.semi_training:
-
-            _semi_tf_vars = self.model.build_model(S_max=1, semi=True, reuse=True)
-            
-            for key, value in _semi_tf_vars.iteritems():
-                s_key = 's_' + key
-                tf_vars[s_key] = value
-
-            s_train_op = self.backprop(tf_vars["s_loss"], semi=True, reuse=True)
-            tf_vars["s_train_op"] = s_train_op
-
-
-        # summary visualization
-        loss_scalars = [(key, tf_vars[key]) for key in tf_vars.keys() if 'loss' in key]
-        for (key, tf_var) in loss_scalars:
-            tf.summary.scalar(key, tf_var)       
+    def _summary(self, grads_and_vars, **kwargs):
+        '''
+            for tensorboard
+        '''
 
         for grad, var in grads_and_vars:
             try:
                 tf.summary.histogram(var.op.name, var)
                 tf.summary.histogram(var.op.name+'/gradient', grad)
             except:
-                print var.op.name
+                print (var.op.name)
 
-        summary_op = tf.summary.merge_all()
-        summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
+        for key in kwargs:
+            tf.summary.scalar('key', kwargs[key])
 
+        self.summary_op = tf.summary.merge_all()
+        self.summary_writer = tf.summary.FileWriter(self.log_path, graph=tf.get_default_graph())
+
+
+    def _print_logs(self, total_loss, sent_loss, word_loss, f_log, start_t, epoch):
+
+        msg = ('Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % 
+                (epoch+1, total_loss, sent_loss, word_loss, time.time() - start_t))
+        
+        print (msg)
+        f_log.write(msg + '\n')
+
+    def train(self):
+        
+        with tf.variable_scope(tf.get_variable_scope()):
+            loss, loss_sent, loss_word = self.model.build_model(S_max=6)
+            sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
+        
+        train_op, grads_and_vars = self.backprop(loss)
+
+        self._summary(grads_and_vars, loss=loss, loss_sent=loss_sent, loss_word=loss_word)
 
         # init session
         sess, saver = self.init_session()
         
         self.model_summary()
+
+        ###################################
+        tf_vars = {}
+        tf_vars['loss'] = loss
+        tf_vars['loss_sent'] = loss_sent
+        tf_vars['loss_word'] = loss_word
+        
+        # train_op, grads_and_vars = self.backprop(tf_vars["loss"])
+
+        tf_vars["sampled_paragraphs"] = sampled_paragraphs
+        tf_vars["pred_re"] = pred_re
+        tf_vars["train_op"] = train_op
+
+        ###################################
 
         # for early stop (METEOR + CIDEr)
         threshold = 0 
@@ -267,14 +278,14 @@ class ParagraphSolver(object):
         scores = []
         
 
-        with open(os.path.join(self.log_path, self.log_file), 'w') as log:
+        with open(os.path.join(self.log_path, self.log_file), 'w') as f_log:
             with open(os.path.join(self.result_path, self.score_file), 'w') as f_score:
             
                 print "start training from %d epoch" % self.pretrained_epoch
-                for e in range(self.n_epoch):
+                for epoch in range(self.n_epoch):
 
                     # skip epoch
-                    if e < self.pretrained_epoch:
+                    if epoch < self.pretrained_epoch:
                         continue
 
                     loss_dict = {
@@ -286,32 +297,21 @@ class ParagraphSolver(object):
                     }
 
 
-                    # semi training
-                    # but data is so big that cannot load all in once, so i split.
-                    if self.semi_training:
-                        if (e+1) % 5 == 0:
-                            for s_feats_files, s_captions_files in zip(self.semi_dense_feats_files, self.semi_captions_files):
-                                print s_feats_files + " is loading..."
-                                train_data = SemiTrainingData(s_feats_files, s_captions_files, self.batch_size)
-                                self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1, semi=True)
-                           
-                            # training img to paragraph
-                            print "im2p is loading..."
-                            train_data = TrainingData(self.config, self.batch_size)
-                            self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
+                    # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
+                    total_loss, total_sent_loss, total_word_loss = self.run_epoch(sess, train_data, loss_dict, train_op, loss, loss_sent, loss_word, epoch+1)
 
-                        else:
-                            self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
 
-                    else:
-                        self.run_epoch(sess, train_data, loss_dict, tf_vars, summary_op, summary_writer, e+1)
+                    # self._print_logs( total_loss,
+                    #           total_sent_loss, 
+                    #           total_word_loss, 
+                    #           f_log, start_t, epoch)
 
 
                     # print loss 
-                    msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_label: %f, loss_word: %f, alpha_reg: %f, Time cost: %f' % \
-                          (e+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_label_loss"], loss_dict["total_word_loss"], loss_dict["alpha_reg"], time.time() - start_t)
+                    msg1 = 'Epoch: %d, loss: %f, loss_sent: %f, loss_word: %f, Time cost: %f' % \
+                          (epoch+1, loss_dict["total_loss"], loss_dict["total_sent_loss"], loss_dict["total_word_loss"], time.time() - start_t)
                     print msg1
-                    log.write(msg1 + '\n')
+                    # log.write(msg1 + '\n')
 
 
                     # early stopping
@@ -328,27 +328,27 @@ class ParagraphSolver(object):
                     #         break
 
                     # save model's parameters and validate
-                    if ((e+1) % self.save_every == 0 and (e+1) < 350) or \
-                       ((e+1) % self.save_every_aftere350epoch == 0 and (e+1) >= 350):  
+                    # if ((e+1) % self.save_every == 0 and (e+1) < 350) or \
+                    #    ((e+1) % self.save_every_aftere350epoch == 0 and (e+1) >= 350):  
                         
-                        # validate
-                        output_path = os.path.join( self.result_path, "val_candidate_" + str(e+1) + "_txt")
-                        self.validate(sess, sampled_paragraphs, pred_re, output_path)
+                    #     # validate
+                    #     output_path = os.path.join( self.result_path, "val_candidate_" + str(e+1) + "_txt")
+                    #     self.validate(sess, sampled_paragraphs, pred_re, output_path)
 
-                        # print evaluation score
-                        final_scores = evaluate(get_scores=True, reference_path="../data/reference.txt", candidate_path=output_path)
-                        msg2 = "epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" \
-                            % (e+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
-                            final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
-                        print msg2
-                        log.write(msg2 + '\n')
-                        print "-"*50
+                    #     # print evaluation score
+                    #     final_scores = evaluate(get_scores=True, reference_path="../data/reference.txt", candidate_path=output_path)
+                    #     msg2 = "epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" \
+                    #         % (e+1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+                    #         final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
+                    #     print msg2
+                    #     log.write(msg2 + '\n')
+                    #     print "-"*50
 
-                        f_score.write(msg2 + '\n')
+                    #     f_score.write(msg2 + '\n')
 
-                        # save model
-                        saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
-                        print "model-%s saved." % (e+1)
+                    #     # save model
+                    #     saver.save(sess, os.path.join(self.model_path, 'model'), global_step=e+1)
+                    #     print "model-%s saved." % (e+1)
 
                 
 

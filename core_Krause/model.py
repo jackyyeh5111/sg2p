@@ -261,7 +261,7 @@ class Regions_Hierarchical():
         print 'Start build model:'
         with tf.variable_scope(tf.get_variable_scope()) as scope:
             for i in range(0, S_max):
-                    
+                print 'here %d' % i
                 context, alpha = self._attention_layer(features, features_proj, h, reuse=reuse or (i!=0))
                 alpha_list.append(alpha)
 
@@ -326,26 +326,26 @@ class Regions_Hierarchical():
                         loss += loss_wordRNN * lambda_word
                         loss_word += loss_wordRNN
 
-            tf_vars = {
-                "loss": loss,
-                "loss_sent": loss_sent,
-                "loss_label": loss_label,
-                "loss_word": loss_word,
-                "alpha_reg": alpha_reg,
-            }
+            # tf_vars = {
+            #     "loss": loss,
+            #     "loss_sent": loss_sent,
+            #     "loss_label": loss_label,
+            #     "loss_word": loss_word,
+            #     "alpha_reg": alpha_reg,
+            # }
 
             
-            if semi == False:
-                # attention regularization
-                if self.alpha_c > 0:
-                    sents_mask = tf.expand_dims(sents_mask, 2)
-                    alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2)) * sents_mask  # (N, T, L)
-                    alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
-                    alpha_reg = self.alpha_c * tf.reduce_sum((self.S_max/4096.0 - alphas_all) ** 2)
-                    tf_vars["loss"] += alpha_reg
-                    tf_vars["alpha_reg"] = alpha_reg
+            # if semi == False:
+            #     # attention regularization
+            #     if self.alpha_c > 0:
+            #         sents_mask = tf.expand_dims(sents_mask, 2)
+            #         alphas = tf.transpose(tf.stack(alpha_list), (1, 0, 2)) * sents_mask  # (N, T, L)
+            #         alphas_all = tf.reduce_sum(alphas, 1)      # (N, L)
+            #         alpha_reg = self.alpha_c * tf.reduce_sum((self.S_max/4096.0 - alphas_all) ** 2)
+            #         tf_vars["loss"] += alpha_reg
+            #         tf_vars["alpha_reg"] = alpha_reg
 
-        return tf_vars
+        return loss, loss_sent, loss_word
 
     
     def build_sampler(self, reuse):
