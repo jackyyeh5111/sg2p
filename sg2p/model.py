@@ -183,7 +183,7 @@ class Regions_Hierarchical():
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
                        max_n_objs=30,
-                       max_n_rels=100,
+                       max_n_rels=150,
                        n_objs=282,
                        n_preds=50,
                        embedding_dim=100,
@@ -290,9 +290,9 @@ class Regions_Hierarchical():
 
             # receive the ground truth words, which has been changed to idx use word2idx function
             self.captions = tf.placeholder(tf.int32, [batch_size, self.S_max, self.N_max+1])
-            self.objs = tf.placeholder(tf.int32, [batch_size, max_n_objs+1])
+            self.objs = tf.placeholder(tf.int32, [None, max_n_objs+1])
             # self.objs_idx = tf.placeholder(tf.int32, [batch_size, 30])
-            self.triples = tf.placeholder(tf.int32, [batch_size, max_n_rels, 3])
+            self.triples = tf.placeholder(tf.int32, [None, max_n_rels, 3])
 
             # self.caption_labels = tf.placeholder(tf.int32, [None, self.S_max, self.label_size])
 
@@ -543,7 +543,7 @@ class Regions_Hierarchical():
 
                 if j == 0:
                     # get word embedding of BOS (index = 0)
-                    current_embed = tf.nn.embedding_lookup(self.Wemb, tf.fill([tf.shape(self.densecap_feats)[0]], self.start_idx) )
+                    current_embed = tf.nn.embedding_lookup(self.Wemb, tf.fill([tf.shape(self.objs)[0]], self.start_idx) )
 
                 with tf.variable_scope('word_LSTM', reuse=reuse or (j!=0)):
                     _, (word_c, word_h) = self.word_LSTM(current_embed, state=[word_c, word_h])

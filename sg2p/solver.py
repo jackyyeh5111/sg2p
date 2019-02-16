@@ -197,9 +197,13 @@ class ParagraphSolver(object):
            
             batch_data = val_data.next_batch()
             feed_dict = {
-                     self.model.objs: batch_data["objs"],
+                    self.model.objs: batch_data["objs"],
                     self.model.triples: batch_data["triples"],
                 }
+
+            # print batch_data["objs"][0].shape
+            # print batch_data["triples"][0].shape
+            # raw_input()
             
             _sampled_paragraphs, _pred = self.sess.run([sampled_paragraphs, pred_re], feed_dict)
             val_paragraphs = decode_paragraphs(_sampled_paragraphs, _pred, self.dc.idx2word, fixed_n_sent=self.fixed_n_sent)
@@ -221,7 +225,7 @@ class ParagraphSolver(object):
 
         # init session
         self.sess, self.saver = self.init_session()
-        self._print_model_vars()
+        # self._print_model_vars()
 
        
         # start training

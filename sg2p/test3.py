@@ -1,16 +1,18 @@
 import tensorflow as tf
-import numpy as np
-x = tf.placeholder(tf.float32, shape=[None, 4])
 
-# Use tf.shape() to get the runtime size of `x` in the 0th dimension.
-zeros_dims = tf.stack([tf.shape(x)[0]*2, 7])
+indices = tf.constant([[0], [0]])
+updates = tf.constant([[[5, 5, 5, 5], 
+						[6, 6, 6, 6],
+                        [7, 7, 7, 7]],
+                       [[5, 5, 5, 5], 
+                       	[6, 6, 6, 6],
+                        [7, 7, 7, 7]]])
+shape = tf.constant([4, 3, 4])
 
-y = tf.fill(zeros_dims, 0.0)
+print indices # (B, 1)
+print updates # (B, 4, 4)
+print shape # (3, )
 
-y = tf.zeros(zeros_dims)
-
-sess = tf.Session()
-y_result = sess.run(y, feed_dict={x: np.random.rand(4, 4)})
-print y_result.shape
-print y_result
-# ==> (4, 7)
+scatter = tf.scatter_nd(indices, updates, shape)
+with tf.Session() as sess:
+  print(sess.run(scatter))

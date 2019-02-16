@@ -120,22 +120,29 @@ class GraphTripleConv():
     
 
     # Allocate space for pooled object vectors of shape (O, H)
-    pooled_obj_vecs = tf.Variable(tf.zeros((batch_size*O, H), dtype=dtype))
+    pooled_obj_vecs = tf.zeros((batch_size, O, H), dtype=dtype)
 
     # trick for scatter_add (tf scatter_add cannot use batch_dim)
     s_idx = s_idx + tf.reshape(tf.range(batch_size*O, delta=O), [-1, 1])
     o_idx = o_idx + tf.reshape(tf.range(batch_size*O, delta=O), [-1, 1])
     
-    s_idx = tf.reshape(s_idx, [-1])
-    o_idx = tf.reshape(o_idx, [-1])
+    pooled_obj_vecs = tf.reshape(pooled_obj_vecs, [-1, H])
+    s_idx = tf.reshape(s_idx, [-1, 1])
+    o_idx = tf.reshape(o_idx, [-1, 1])
     new_s_vecs = tf.reshape(new_s_vecs, [-1, H])
     new_o_vecs = tf.reshape(new_o_vecs, [-1, H])
 
     
+    ref_shape = tf.shape(pooled_obj_vecs) # (8, 5)
+    s_scattered = tf.scatter_nd(s_idx, new_s_vecs, ref_shape, name='s_scattered')
+    o_scattered = tf.scatter_nd(o_idx, new_o_vecs, ref_shape, name='o_scattered')
+
+    pooled_obj_vecs = s_scattered + o_scattered
+
     # Use scatter_add to sum vectors for objects that appear in multiple triples;
     # we first need to expand the indices to have shape (T, D)
-    pooled_obj_vecs = tf.scatter_add(pooled_obj_vecs, s_idx, new_s_vecs)
-    pooled_obj_vecs = tf.scatter_add(pooled_obj_vecs, o_idx, new_o_vecs)
+    # pooled_obj_vecs = tf.scatter_add(pooled_obj_vecs, s_idx, new_s_vecs)
+    # pooled_obj_vecs = tf.scatter_add(pooled_obj_vecs, o_idx, new_o_vecs)
 
     print 'pooled_obj_vecs'
     print pooled_obj_vecs
@@ -144,26 +151,37 @@ class GraphTripleConv():
     if self.pooling == 'avg':
       # Figure out how many times each object has appeared, again using
       # some scatter_add trickery.
-      obj_counts = tf.Variable(tf.zeros((batch_size*O,), dtype=dtype))
+      obj_counts = tf.zeros((batch_size*O, ), dtype=dtype)
       ones = tf.ones(batch_size*T, dtype=dtype)
-      obj_counts = tf.scatter_add(obj_counts, s_idx, ones)
-      obj_counts = tf.scatter_add(obj_counts, o_idx, ones)
+      ref_shape = tf.shape(obj_counts) # (8, 5)
+      s_scattered = tf.scatter_nd(s_idx, ones, ref_shape, name='s_scattered')
+      o_scattered = tf.scatter_nd(o_idx, ones, ref_shape, name='o_scattered')
+
+      obj_counts = s_scattered + o_scattered
+
+
+      # obj_counts = tf.Variable(tf.zeros((batch_size*O,), dtype=dtype), validate_shape=False)
+      # ones = tf.ones(batch_size*T, dtype=dtype)
+      # obj_counts = tf.scatter_add(obj_counts, s_idx, ones)
+      # obj_counts = tf.scatter_add(obj_counts, o_idx, ones)
 
       # Divide the new object vectors by the number of times they
       # appeared, but first clamp at 1 to avoid dividing by zero;
       # objects that appear in no triples will have output vector 0
       # so this will not affect them.
       obj_counts = tf.clip_by_value(obj_counts, clip_value_min=1, clip_value_max=100000)
+      print 'obj_counts'
       print obj_counts
       
 
       pooled_obj_vecs =  tf.cast(pooled_obj_vecs, tf.float32) / tf.reshape(obj_counts, (-1, 1))
 
-    pooled_obj_vecs = pooled_obj_vecs
+    
     pooled_obj_vecs = tf.reshape(pooled_obj_vecs, [batch_size, O, H])
 
     print pooled_obj_vecs # (128, 30, 512)
     print new_p_vecs
+    # raw_input()
 
     # Send pooled object vectors through net2 to get output object vectors,
     # of shape (O, Dout)
