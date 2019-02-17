@@ -418,14 +418,14 @@ class Regions_Hierarchical():
 
                 # sent loss
                 
-                with tf.name_scope('sent_loss'):
-                    # sentRNN_logistic_mu = tf.nn.xw_plus_b( sent_output, self.logistic_Theta_W, self.logistic_Theta_b )
-                    sentRNN_label = tf.stack([ 1 - self.num_distribution[:, i], self.num_distribution[:, i] ])
-                    sentRNN_label = tf.transpose(sentRNN_label)
-                    sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=pred_stop, labels=sentRNN_label)
-                    sentRNN_loss = tf.reduce_sum(sentRNN_loss)/self.batch_size
-                    loss += sentRNN_loss * lambda_sent
-                    loss_sent += sentRNN_loss
+                # with tf.name_scope('sent_loss'):
+                #     # sentRNN_logistic_mu = tf.nn.xw_plus_b( sent_output, self.logistic_Theta_W, self.logistic_Theta_b )
+                #     sentRNN_label = tf.stack([ 1 - self.num_distribution[:, i], self.num_distribution[:, i] ])
+                #     sentRNN_label = tf.transpose(sentRNN_label)
+                #     sentRNN_loss = tf.nn.softmax_cross_entropy_with_logits(logits=pred_stop, labels=sentRNN_label)
+                #     sentRNN_loss = tf.reduce_sum(sentRNN_loss)/self.batch_size
+                #     loss += sentRNN_loss * lambda_sent
+                #     loss_sent += sentRNN_loss
                     
 
                 # wordRNN state

@@ -265,8 +265,8 @@ class ParagraphSolver(object):
        
         # start training
         start_t = time.time()
-        f_log = open(os.path.join(self.log_path, self.log_file), 'w')
-        f_score = open(os.path.join(self.result_path, self.score_file), 'w')
+        f_log = open(os.path.join(self.log_path, self.log_file), 'w', buffering=0)
+        f_score = open(os.path.join(self.result_path, self.score_file), 'w', buffering=0)
     
         print ("start training from %d epoch" % self.pretrained_epoch)
         for epoch in range(self.n_epoch):

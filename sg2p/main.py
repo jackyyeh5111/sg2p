@@ -23,7 +23,7 @@ def load_args():
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
                         help="The directory of save model.")
-    parser.add_argument("-fixed_n_sent", action="store_true", default=False,  
+    parser.add_argument("-fixed_n_sent", action="store_true", default=True,  
                         help="generatel fixed number(S_max) of sent of a paragraph while inferencing")
     parser.add_argument("-S_max", type=int, default=6, 
                         help="max sentence number per paragraph")
