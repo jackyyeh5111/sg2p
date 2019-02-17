@@ -40,7 +40,7 @@ class TrainingData():
         self.num_batch = int(self.size / self.batch_size)
         self.pointer = 0
         
-    def load_graphs(self, sg_path, classes_1600to282, max_n_objs=30, max_n_rels=150):
+    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels):
         '''
         entries: list of dictionary
         entries[i]['labels']: shape of (O, )
@@ -79,8 +79,8 @@ class TrainingData():
                 # i_objs_idx += [-1] * (max_n_objs-len(i_objs)) # included in triples, no need to feed into model
                 i_objs += [padding] * (max_n_objs + 1 - len(i_objs)) # padding, 282 is padding idx for objs
             else:
-                i_objs = i_objs[:max_n_objs] 
-                i_objs = i_objs + [padding] # 31st idx is padding
+                i_objs = i_objs[:max_n_objs] + [padding] # 31st idx is padding
+
 
             if len(i_triples) < max_n_rels:
                 pad_triples = np.zeros((max_n_rels-len(i_triples), 3))
@@ -207,7 +207,7 @@ class TestData():
         
         self.pointer = 0
 
-    def load_graphs(self, sg_path, classes_1600to282, max_n_objs=30, max_n_rels=150):
+    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels):
         '''
         entries: list of dictionary
         entries[i]['labels']: shape of (O, )

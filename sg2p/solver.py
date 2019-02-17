@@ -23,11 +23,9 @@ class ParagraphSolver(object):
         self.args = args
 
         self.save_every = self.args.save_every
-        self.save_every_aftere350epoch = 5
         self.log_every = self.args.log_every
         
-        self.early_stop_epoch = 10
-        self.early_stop = self.args.early_stop
+        
         self.ref_test_sents = self.args.ref_test_sents
 
         self.model = model
@@ -45,6 +43,14 @@ class ParagraphSolver(object):
         self.result_path = os.path.join(self.args.path.result_dir, self.process_name)
         self.update_rule = self.args.update_rule
 
+
+        # for early stop
+        self.patience = self.args.patience
+        self.best_score = 0
+        self.best_epoch = 0
+        self.score_no_change = 0
+        self.is_early_stop = self.args.is_early_stop
+        
 
         # get pretrained_epoch
         if self.pretrained_model is not None:
@@ -203,6 +209,22 @@ class ParagraphSolver(object):
 
             # print batch_data["objs"][0].shape
             # print batch_data["triples"][0].shape
+            
+            # for objs in batch_data["objs"][:3]:
+            #     for obj in objs:
+            #         if obj == 0:
+            #             continue
+            #         print self.dc.classes_282[str(obj)],
+
+            #     print ''
+            
+            # for i in range(3):
+            #     for triple, obj in zip(batch_data['triples'][i], batch_data['objs'][i]):
+            #         s = triple[0]
+            #         o = triple[1]
+            #         p = triple[2]
+            #         print '%s %s %s' % (self.dc.classes_282[str(obj[s])], self.dc.idx2pred[str(p)], self.dc.classes_282[str(obj[o])])
+
             # raw_input()
             
             _sampled_paragraphs, _pred = self.sess.run([sampled_paragraphs, pred_re], feed_dict)
@@ -212,6 +234,19 @@ class ParagraphSolver(object):
         output_paragraphs(totol_paragraphs, output_path)
 
 
+    def _early_stop(self, current_score, epoch):
+
+        if self.best_score > current_score:
+            self.score_no_change += 1
+            if self.score_no_change == self.patience:
+                return True
+        else:
+            self.best_score = current_score
+            self.score_no_change = 0
+            self.best_epoch = epoch
+        
+        return False
+        
 
     def train(self):
         
@@ -234,14 +269,12 @@ class ParagraphSolver(object):
         f_score = open(os.path.join(self.result_path, self.score_file), 'w')
     
         print ("start training from %d epoch" % self.pretrained_epoch)
-
         for epoch in range(self.n_epoch):
 
             # skip epoch
             if epoch < self.pretrained_epoch:
                 continue
 
-            # total_loss, total_sent_loss, total_word_loss = self._run_epoch(train_op, loss, loss_sent, loss_word)
             total_loss, total_sent_loss, total_word_loss = self.run_epoch(train_op, loss, loss_sent, loss_word, epoch+1)
 
 
@@ -258,6 +291,13 @@ class ParagraphSolver(object):
                 final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
                 self._print_scores(final_scores, epoch, f_score)
 
+                # early stop depends on score 'METEOR', 'CIDEr'
+                if self.is_early_stop == True:
+                    es_score = final_scores['METEOR'] + final_scores['CIDEr']
+                    if self._early_stop(es_score, epoch) == True:
+                        print ('early stop in epoch[%d]!\nbest_score: %.2f' % (self.best_epoch, self.best_score))
+                        break
+
             if (epoch+1) % self.save_every == 0:
                 self._save_model(epoch)
 
@@ -265,6 +305,9 @@ class ParagraphSolver(object):
         f_log.close()
         f_score.close()
 
+    def _save_model(self, epoch):
+        self.saver.save(self.sess, os.path.join(self.model_path, 'model'), global_step=epoch+1)
+        print "model-%s saved." % (epoch+1)
 
 
 

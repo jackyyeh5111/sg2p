@@ -8,62 +8,66 @@ import numpy as np
 from path_config import PathConfig
 from util import *
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-# ex: python main.py -m train -p test --sentRNN_lstm_dim 128 --wordRNN_lstm_dim 128 --log_every 1
+# ex: python main.py -m train -p test 
+# ex: python main.py -m train -p test -gpu 1
 
 def load_args():
     parser = argparse.ArgumentParser()
 
     # system config
-    parser.add_argument('--no-cuda', action='store_true', default=False,
+    parser.add_argument('-no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
+    parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
-    parser.add_argument("--model_name", type=str, default=None, 
+    parser.add_argument("-model_name", type=str, default=None, 
                         help="The directory of save model.")
-    parser.add_argument("--fixed_n_sent", action="store_true", default=False,  
+    parser.add_argument("-fixed_n_sent", action="store_true", default=False,  
                         help="generatel fixed number(S_max) of sent of a paragraph while inferencing")
-    parser.add_argument("--S_max", type=int, default=6, 
+    parser.add_argument("-S_max", type=int, default=6, 
                         help="max sentence number per paragraph")
-    parser.add_argument("--N_max", type=int, default=30, 
+    parser.add_argument("-N_max", type=int, default=30, 
                         help="max words number per sentence")
-    parser.add_argument("--early_stop", action="store_true", default=False,  
+    parser.add_argument("-is_early_stop", action="store_true", default=True,  
                         help="early stopping strategy will be used in training")
-    parser.add_argument("--ref_test_sents", action="store_true", default=False)
-    parser.add_argument("--save_every", type=int, default=50)
-    parser.add_argument("--log_every", type=int, default=20)
-    parser.add_argument("--checkpoint", type=str, default=None, help="The directory of save model.")
+    parser.add_argument("-ref_test_sents", action="store_true", default=False)
+    parser.add_argument("-save_every", type=int, default=50)
+    parser.add_argument("-log_every", type=int, default=50)
+    parser.add_argument("-patience", type=int, default=8)
+    parser.add_argument("-checkpoint", type=str, default=None, help="The directory of save model.")
 
     # model parameters
-    parser.add_argument("--update_rule", type=str, default="adam")
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-    parser.add_argument("--n_epochs", type=int, default=600)
-    parser.add_argument("--sentRNN_lstm_dim", type=int, default=512)
-    parser.add_argument("--wordRNN_lstm_dim", type=int, default=512)
-    parser.add_argument("--num_boxes", type=int, default=50)
-    parser.add_argument("--feats_dim", type=int, default=4096)
-    parser.add_argument("--attention_dim", type=int, default=4096)
-    parser.add_argument("--project_dim", type=int, default=1024)
-    parser.add_argument('--word_lstm_layer', type=int, default=1,
+    parser.add_argument("-update_rule", type=str, default="adam")
+    parser.add_argument("-learning_rate", type=float, default=1e-4)
+    parser.add_argument("-n_epochs", type=int, default=1000)
+    parser.add_argument("-sentRNN_lstm_dim", type=int, default=512)
+    parser.add_argument("-wordRNN_lstm_dim", type=int, default=512)
+    parser.add_argument("-num_boxes", type=int, default=50)
+    parser.add_argument("-feats_dim", type=int, default=128)
+    parser.add_argument("-attention_dim", type=int, default=4096)
+    parser.add_argument("-project_dim", type=int, default=1024)
+    parser.add_argument('-word_lstm_layer', type=int, default=1,
                         help='the num layer for word rnn')
-    parser.add_argument('--sent_lstm_layer', type=int, default=1,
+    parser.add_argument('-sent_lstm_layer', type=int, default=1,
                         help='the num layer for sentence rnn')
-    parser.add_argument('--topic_dim', type=int, default=1024,
+    parser.add_argument('-topic_dim', type=int, default=1024,
                         help='the size for topic vector')
-    parser.add_argument('--pooling_dim', type=int, default=1024,
+    parser.add_argument('-embedding_dim', type=int, default=100)
+    
+    parser.add_argument('-pooling_dim', type=int, default=1024,
                         help='the size for pooling vector')
-    parser.add_argument('--embed_dim', type=int, default=300)
-    parser.add_argument('--lambda_sentence', type=int, default=5,
+    parser.add_argument('-embed_dim', type=int, default=300)
+    parser.add_argument('-lambda_sentence', type=int, default=5,
                         help='the cost lambda for sentence loss function')
-    parser.add_argument('--lambda_word', type=int, default=1,
+    parser.add_argument('-lambda_word', type=int, default=1,
                         help='the cost lambda for word loss function')
 
-    parser.add_argument('--max_n_objs', type=int, default=30)
-    parser.add_argument('--max_n_rels', type=int, default=150)
+    parser.add_argument('-max_n_objs', type=int, default=30)
+    parser.add_argument('-max_n_rels', type=int, default=150)
 
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--test_batch_size", type=int, default=256)
+    parser.add_argument("-batch_size", type=int, default=128)
+    parser.add_argument("-test_batch_size", type=int, default=256)
       
 
     args = parser.parse_args()
@@ -126,6 +130,8 @@ def main():
     args = load_args()
     args.path = PathConfig()
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+
     dc = DataContainer(args)
 
     model = Regions_Hierarchical( word2idx = dc.word2idx, 
@@ -134,7 +140,9 @@ def main():
                                   sentRNN_lstm_dim=args.sentRNN_lstm_dim,
                                   wordRNN_lstm_dim=args.wordRNN_lstm_dim,
                                   max_n_objs=args.max_n_objs,
-                                  max_n_rels=args.max_n_rels)
+                                  max_n_rels=args.max_n_rels,
+                                  embedding_dim=args.embedding_dim,
+                                  feats_dim=args.feats_dim)
 
 
     solver = ParagraphSolver(model, dc, args)

@@ -48,7 +48,7 @@ class GraphTripleConv():
   A single layer of scene graph convolution.
   """
   def __init__(self, input_dim, output_dim=None, hidden_dim=512,
-               pooling='avg', mlp_normalization='none'):
+               pooling='avg', mlp_normalization=None, dropout_ratio=0.5):
     
     if output_dim is None:
       output_dim = input_dim
@@ -69,7 +69,30 @@ class GraphTripleConv():
 
     self.activation = tf.nn.relu
 
-  def __call__(self, obj_vecs, pred_vecs, edges):
+    self.dropout_ratio = dropout_ratio
+    self.mlp_normalization = mlp_normalization
+
+  def _batch_norm(self, x, mode, name=None, reuse=None):
+        return tf.contrib.layers.batch_norm(inputs=x,
+                                            decay=0.95,
+                                            center=True,
+                                            scale=True,
+                                            is_training=(mode=='train'),
+                                            updates_collections=None,
+                                            scope=name, 
+                                            reuse=reuse)
+
+
+  def middle_layer(self, mode, vecs):
+    if self.mlp_normalization:
+      vecs = self._batch_norm(vecs, mode=mode)
+
+    if mode == 'train':
+      vecs = tf.nn.dropout(vecs, self.dropout_ratio)
+    
+    return vecs
+
+  def __call__(self, mode, obj_vecs, pred_vecs, edges):
     """
     Inputs:
     - obj_vecs: FloatTensor of shape (O, D) giving vectors for all objects
@@ -81,6 +104,8 @@ class GraphTripleConv():
     - new_obj_vecs: FloatTensor of shape (O, D) giving new vectors for objects
     - new_pred_vecs: FloatTensor of shape (T, D) giving new vectors for predicates
     """
+    assert mode in ['train', 'test']
+
     dtype = obj_vecs.dtype
     O, T, D = tf.shape(obj_vecs)[1], tf.shape(pred_vecs)[1], tf.shape(obj_vecs)[2]
     batch_size = tf.shape(obj_vecs)[0]
@@ -108,7 +133,10 @@ class GraphTripleConv():
     # Pass through net1 to get new triple vecs; shape is (T, 2 * H + Dout)
     cur_t_vecs = tf.concat([cur_s_vecs, pred_vecs, cur_o_vecs], axis=2)
     cur_t_vecs = self.activation( self.layer1(cur_t_vecs) )
+    cur_t_vecs = self.middle_layer(mode, cur_t_vecs)
     new_t_vecs = self.activation( self.layer2(cur_t_vecs) )
+    new_t_vecs = self.middle_layer(mode, new_t_vecs)
+
 
     # Break apart into new s, p, and o vecs; s and o vecs have shape (T, H) and
     # p vecs have shape (T, Dout)
@@ -186,6 +214,7 @@ class GraphTripleConv():
     # Send pooled object vectors through net2 to get output object vectors,
     # of shape (O, Dout)
     pooled_obj_vecs = self.activation( self.layer3(pooled_obj_vecs) )
+    pooled_obj_vecs = self.middle_layer(mode, pooled_obj_vecs)
     new_obj_vecs = self.activation( self.layer4(pooled_obj_vecs) )
 
     print pooled_obj_vecs # (128, 30, 512)

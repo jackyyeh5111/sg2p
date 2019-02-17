@@ -182,6 +182,7 @@ class Regions_Hierarchical():
                        pretrained_embed_matrix,
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
+                       feats_dim, # =gconv_dim
                        max_n_objs=30,
                        max_n_rels=150,
                        n_objs=282,
@@ -189,13 +190,12 @@ class Regions_Hierarchical():
                        embedding_dim=100,
                        # pred_embed_dim=32,
                        # obj_embed_dim=100,
-                       gconv_dim=128,
+                       # gconv_dim=128,
                        gconv_hidden_dim=512,
                        gconv_pooling='avg',
                        gconv_num_layers=5,
 
                        num_boxes=50,
-                       feats_dim=128, # =gconv_dim
                        project_dim=1024,
                        topic_dim=1024,
                        S_max=6,
@@ -318,7 +318,7 @@ class Regions_Hierarchical():
 
             gconv_kwargs = {
                 'input_dim': embedding_dim,
-                'output_dim': gconv_dim,
+                'output_dim': feats_dim,
                 'hidden_dim': gconv_hidden_dim,
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
@@ -375,7 +375,7 @@ class Regions_Hierarchical():
         # print obj_vecs
         # print pred_vecs
 
-        obj_vecs, pred_vecs = self.gconv(obj_vecs, pred_vecs, edges)
+        obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
@@ -482,7 +482,7 @@ class Regions_Hierarchical():
         # print obj_vecs
         # print pred_vecs
 
-        obj_vecs, pred_vecs = self.gconv(obj_vecs, pred_vecs, edges)
+        obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
