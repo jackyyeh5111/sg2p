@@ -55,12 +55,14 @@ class ParagraphSolver(object):
         # get pretrained_epoch
         if self.pretrained_model is not None:
             self.pretrained_epoch = int(self.pretrained_model.split('-')[1] )
-            self.log_file = "log_" + self.pretrained_model + ".txt"
-            self.score_file = "score_" + self.pretrained_model + ".txt"
+            self.open_file_mode = 'a'
+            # self.log_file = "log_" + self.pretrained_model + ".txt"
+            # self.score_file = "score_" + self.pretrained_model + ".txt"
         else:
             self.pretrained_epoch = 0
-            self.log_file = "log.txt" 
-            self.score_file = "score.txt"
+            self.open_file_mode = 'w'
+            # self.log_file = "log.txt" 
+            # self.score_file = "score.txt"
         
 
         # set an optimizer by update rule
@@ -262,11 +264,11 @@ class ParagraphSolver(object):
         self.sess, self.saver = self.init_session()
         # self._print_model_vars()
 
-       
         # start training
         start_t = time.time()
-        f_log = open(os.path.join(self.log_path, self.log_file), 'w', buffering=0)
-        f_score = open(os.path.join(self.result_path, self.score_file), 'w', buffering=0)
+
+        f_log = open(os.path.join(self.log_path, 'log.txt'), self.open_file_mode, buffering=0)
+        f_score = open(os.path.join(self.result_path, 'score.txt'), self.open_file_mode, buffering=0)
     
         print ("start training from %d epoch" % self.pretrained_epoch)
         for epoch in range(self.n_epoch):

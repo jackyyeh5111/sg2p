@@ -34,7 +34,7 @@ def load_args():
     parser.add_argument("-ref_test_sents", action="store_true", default=False)
     parser.add_argument("-save_every", type=int, default=50)
     parser.add_argument("-log_every", type=int, default=50)
-    parser.add_argument("-patience", type=int, default=8)
+    parser.add_argument("-patience", type=int, default=4)
     parser.add_argument("-checkpoint", type=str, default=None, help="The directory of save model.")
 
     # model parameters

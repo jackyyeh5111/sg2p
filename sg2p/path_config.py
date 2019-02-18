@@ -11,6 +11,8 @@ class PathConfig():
 		self.model_dir = self.__path("models/")
 		self.result_dir = self.__path("results/")
 
+		self.image_dir = '../../dataset/VG'
+		
 		self.n_test_data_sents_path = self.__path('data/n_test_data_sents.hkl')
 
 		self.paragraph_json_path = self.__path('data/paragraphs_v1.json')
@@ -27,9 +29,9 @@ class PathConfig():
 		self.val_sg_path = self.__path('data/sg/sg2p_val.pkl')
 		self.test_sg_path = self.__path('data/sg/sg2p_test.pkl')
 
-		self.VG_SGG_dict = '/2t/jackyyeh/scene-graph-TF-release/data_tools/VG-SGG-dicts_jacky.json'
-		self.classes_path = '/2t/jackyyeh/scene-graph-TF-release/data_tools/VG/jacky_object_list.txt'
-		self.classes_1600_path = '/2t/jackyyeh/bottom-up-attention/data/genome/1600-400-20' # 1600 objects, 400 attributes, 20 relations
+		self.VG_SGG_dict = self.__path('data/sg/VG-SGG-dicts_jacky.json')
+		# self.classes_path = '/2t_1/jackyyeh/scene-graph-TF-release/data_tools/VG/jacky_object_list.txt'
+		self.classes_1600_path = '../../bottom-up-attention/data/genome/1600-400-20' # 1600 objects, 400 attributes, 20 relations
 
 
 		self.word2idx_path = self.__path('data/word2idx.json')
