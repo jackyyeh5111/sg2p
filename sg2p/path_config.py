@@ -25,6 +25,11 @@ class PathConfig():
 		self.val_feats_path = self.__path('data/densecap/im2p_val_output.h5')
 		self.test_feats_path = self.__path('data/densecap/im2p_test_output.h5')
 
+		self.train_box_feats_path = self.__path('data/sg/box_features_train.hkl')
+		self.sample_box_feats_path = self.__path('data/sg/box_features_sample.hkl')
+		self.val_box_feats_path = self.__path('data/sg/box_features_val.hkl')
+		self.test_box_feats_path = self.__path('data/sg/box_features_test.hkl')
+
 		self.train_sg_path = self.__path('data/sg/sg2p_train.pkl')
 		self.val_sg_path = self.__path('data/sg/sg2p_val.pkl')
 		self.test_sg_path = self.__path('data/sg/sg2p_test.pkl')

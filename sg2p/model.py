@@ -58,7 +58,6 @@ class Attention():
 
         return context, alpha
 
-
 class SentRNN():
     def __init__(self,
                  hidden_size,
@@ -182,12 +181,13 @@ class Regions_Hierarchical():
                        pretrained_embed_matrix,
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
-                       feats_dim, # =gconv_dim
+                       gcv_feats_dim, # =gconv_dim
                        max_n_objs=30,
                        max_n_rels=150,
                        n_objs=282,
                        n_preds=50,
                        embedding_dim=100,
+                       box_feats_dim=2048,
                        # pred_embed_dim=32,
                        # obj_embed_dim=100,
                        # gconv_dim=128,
@@ -213,7 +213,7 @@ class Regions_Hierarchical():
             self.start_idx = word2idx["<bos>"]
             self.batch_size = batch_size
             self.num_boxes = num_boxes 
-            self.feats_dim = feats_dim 
+            self.gcv_feats_dim = gcv_feats_dim 
             self.project_dim = project_dim 
             self.S_max = S_max 
             self.N_max = N_max 
@@ -226,7 +226,7 @@ class Regions_Hierarchical():
 
             self.H = sentRNN_lstm_dim
             self.L = num_boxes
-            self.D = feats_dim
+            self.D = gcv_feats_dim + box_feats_dim
             self.ctx2out = ctx2out
             self.alpha_c = alpha_c
 
@@ -234,7 +234,7 @@ class Regions_Hierarchical():
                                      sentRNN_numlayer,
                                      wordRNN_lstm_dim,
                                      project_dim,
-                                     feats_dim,
+                                     self.D,
                                      topic_dim,
                                      max_n_objs)
 
@@ -251,7 +251,7 @@ class Regions_Hierarchical():
             self.selector = selector
             self.dropout = dropout
 
-            self.attention_layer = Attention(num_boxes, feats_dim)  # attention network
+            self.attention_layer = Attention(num_boxes, gcv_feats_dim)  # attention network
             
             # logistic classifier
             self.logistic_Theta_W = tf.Variable(tf.random_uniform([sentRNN_lstm_dim, 2], -0.1, 0.1), name='logistic_Theta_W')
@@ -280,9 +280,9 @@ class Regions_Hierarchical():
             self.embed_word_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, self.vocab_size], -0.1,0.1), name='embed_word_W')
             self.embed_word_b = tf.Variable(tf.zeros([self.vocab_size]), name='embed_word_b')
 
-
             # placeholder
-            self.densecap_feats = tf.placeholder(tf.float32, [batch_size, self.num_boxes, self.feats_dim])
+            # self.densecap_feats = tf.placeholder(tf.float32, [batch_size, self.num_boxes, self.gcv_feats_dim])
+            self.box_feats = tf.placeholder(tf.float32, [None, max_n_objs, box_feats_dim])
 
             # receive the [continue:0, stop:1] lists
             # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
@@ -318,7 +318,7 @@ class Regions_Hierarchical():
 
             gconv_kwargs = {
                 'input_dim': embedding_dim,
-                'output_dim': feats_dim,
+                'output_dim': gcv_feats_dim,
                 'hidden_dim': gconv_hidden_dim,
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
@@ -356,6 +356,7 @@ class Regions_Hierarchical():
         # objs_idx = self.objs_idx
         triples = self.triples  
         captions = self.captions
+        box_feats = self.box_feats
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
@@ -379,8 +380,13 @@ class Regions_Hierarchical():
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
+
+        features = tf.concat([obj_vecs, box_feats], axis=2)
+        # np.concate(self.box_feats)
+
         print obj_vecs
-        features = obj_vecs
+
+        # features = obj_vecs
 
         # raw_input()
         # mask objs by 282
@@ -473,6 +479,7 @@ class Regions_Hierarchical():
         objs = self.objs
         # objs_idx = self.objs_idx
         triples = self.triples  
+        box_feats = self.box_feats
 
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
         
@@ -487,7 +494,8 @@ class Regions_Hierarchical():
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         print obj_vecs
-        features = obj_vecs
+        features = tf.concat([obj_vecs, box_feats], axis=2)
+        # features = obj_vecs
         
 
         # save the generated paragraph to list, here I named generated_sents

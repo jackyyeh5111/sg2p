@@ -2,15 +2,15 @@ import argparse
 import tensorflow as tf
 from model import Regions_Hierarchical
 import json
-from data_loader import TrainingData, ValidateData, TestData
+from data_loader import TrainingData, ValidateData, TestData, SampleData
 from solver import ParagraphSolver
 import numpy as np
 from path_config import PathConfig
 from util import *
 import os
 
-# ex: python main.py -m train -p test 
-# ex: python main.py -m train -p test -gpu 1
+# ex: python main.py -m train -p test -gcv_feats_dim 512
+# ex: python main.py -m train -p test -gcv_feats_dim 512 -gpu 1
 
 def load_args():
     parser = argparse.ArgumentParser()
@@ -44,7 +44,7 @@ def load_args():
     parser.add_argument("-sentRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-wordRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-num_boxes", type=int, default=50)
-    parser.add_argument("-feats_dim", type=int, default=128)
+    parser.add_argument("-gcv_feats_dim", type=int, default=128)
     parser.add_argument("-attention_dim", type=int, default=4096)
     parser.add_argument("-project_dim", type=int, default=1024)
     parser.add_argument('-word_lstm_layer', type=int, default=1,
@@ -118,7 +118,7 @@ class DataContainer():
         if args.mode == "train":
             # pass
           self.train_data = TrainingData(args, self.classes_1600to282)
-
+          # self.train_data = SampleData(args, self.classes_1600to282)
           self.val_data = TestData(args, self.classes_1600to282)
 
         elif args.mode == "infer":
@@ -142,7 +142,7 @@ def main():
                                   max_n_objs=args.max_n_objs,
                                   max_n_rels=args.max_n_rels,
                                   embedding_dim=args.embedding_dim,
-                                  feats_dim=args.feats_dim)
+                                  gcv_feats_dim=args.gcv_feats_dim)
 
 
     solver = ParagraphSolver(model, dc, args)

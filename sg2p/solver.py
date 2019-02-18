@@ -8,7 +8,6 @@ from util import *
 import sys
 os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference
 from evaluate import evaluate
-from data_loader import TrainingData
 from tqdm import tqdm
 import tensorflow.contrib.slim as slim
 # from bleu import evaluate
@@ -133,6 +132,7 @@ class ParagraphSolver(object):
                  self.model.triples: batch_data["triples"],
                  self.model.num_distribution: batch_data["num_distribution"],
                  self.model.captions: batch_data["captions"],
+                 self.model.box_feats: batch_data["box_feats"],
             }
 
             
@@ -207,6 +207,7 @@ class ParagraphSolver(object):
             feed_dict = {
                     self.model.objs: batch_data["objs"],
                     self.model.triples: batch_data["triples"],
+                    self.model.box_feats: batch_data["box_feats"],
                 }
 
             # print batch_data["objs"][0].shape
