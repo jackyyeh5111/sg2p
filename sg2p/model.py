@@ -182,6 +182,7 @@ class Regions_Hierarchical():
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
                        gcv_feats_dim, # =gconv_dim
+                       use_box_feats,
                        max_n_objs=30,
                        max_n_rels=150,
                        n_objs=282,
@@ -220,6 +221,7 @@ class Regions_Hierarchical():
             self.embed_dim = pretrained_embed_matrix.shape[1]
             self.max_n_objs = max_n_objs
             self.max_n_rels = max_n_rels
+            self.use_box_feats = use_box_feats
             topic_dim = wordRNN_lstm_dim * 2
 
             self.w_init = WeightInit()
@@ -286,10 +288,10 @@ class Regions_Hierarchical():
 
             # receive the [continue:0, stop:1] lists
             # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
-            self.num_distribution = tf.placeholder(tf.int32, [batch_size, self.S_max])
+            self.num_distribution = tf.placeholder(tf.int32, [None, self.S_max])
 
             # receive the ground truth words, which has been changed to idx use word2idx function
-            self.captions = tf.placeholder(tf.int32, [batch_size, self.S_max, self.N_max+1])
+            self.captions = tf.placeholder(tf.int32, [None, self.S_max, self.N_max+1])
             self.objs = tf.placeholder(tf.int32, [None, max_n_objs+1])
             # self.objs_idx = tf.placeholder(tf.int32, [batch_size, 30])
             self.triples = tf.placeholder(tf.int32, [None, max_n_rels, 3])
@@ -353,10 +355,10 @@ class Regions_Hierarchical():
 
         # features = self.densecap_feats # (50, 4096)  
         objs = self.objs
-        # objs_idx = self.objs_idx
         triples = self.triples  
         captions = self.captions
         box_feats = self.box_feats
+        batch_size = tf.shape(objs)[0]
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
@@ -380,18 +382,12 @@ class Regions_Hierarchical():
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
+        if self.use_box_feats:
+            features = tf.concat([obj_vecs, box_feats], axis=2)
+        else:
+            features = obj_vecs
 
-        features = tf.concat([obj_vecs, box_feats], axis=2)
-        # np.concate(self.box_feats)
-
-        print obj_vecs
-
-        # features = obj_vecs
-
-        # raw_input()
-        # mask objs by 282
-        # ----------------------------------------------------
-
+        print features
 
         loss = 0.0
         loss_sent = tf.constant(0.0)
@@ -455,9 +451,9 @@ class Regions_Hierarchical():
                         logit_words = tf.nn.xw_plus_b(word_output, self.embed_word_W, self.embed_word_b)
 
                     labels = tf.reshape(captions[:, i, j+1], [-1, 1])
-                    indices = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1])
+                    indices = tf.reshape(tf.range(0, batch_size, 1), [-1, 1])
                     concated = tf.concat([indices, labels], 1)
-                    onehot_labels = tf.sparse_to_dense(concated, tf.stack([self.batch_size, self.vocab_size]), 1.0, 0.0)
+                    onehot_labels = tf.sparse_to_dense(concated, tf.stack([batch_size, self.vocab_size]), 1.0, 0.0)
 
                     
                     # At each timestep the hidden state of the last LSTM layer is used to predict a distribution
@@ -465,7 +461,7 @@ class Regions_Hierarchical():
                     with tf.name_scope('word_loss'):
                         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logit_words, labels=onehot_labels)
                         cross_entropy = cross_entropy * captions_mask[:, i, j]
-                        loss_wordRNN = tf.reduce_sum(cross_entropy) / self.batch_size
+                        loss_wordRNN = tf.reduce_sum(cross_entropy) / tf.cast(batch_size, dtype=tf.float32)
                         loss += loss_wordRNN * lambda_word
                         loss_word += loss_wordRNN
 
@@ -477,7 +473,6 @@ class Regions_Hierarchical():
         # features = self.densecap_feats # (50, 4096)
 
         objs = self.objs
-        # objs_idx = self.objs_idx
         triples = self.triples  
         box_feats = self.box_feats
 
@@ -493,10 +488,11 @@ class Regions_Hierarchical():
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
-        print obj_vecs
-        features = tf.concat([obj_vecs, box_feats], axis=2)
-        # features = obj_vecs
-        
+        if self.use_box_feats:
+            features = tf.concat([obj_vecs, box_feats], axis=2)
+        else:
+            features = obj_vecs
+
 
         # save the generated paragraph to list, here I named generated_sents
         generated_paragraph = []

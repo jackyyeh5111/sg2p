@@ -2,7 +2,7 @@ import argparse
 import tensorflow as tf
 from model import Regions_Hierarchical
 import json
-from data_loader import TrainingData, ValidateData, TestData, SampleData
+from data_loader import DataLoader
 from solver import ParagraphSolver
 import numpy as np
 from path_config import PathConfig
@@ -19,6 +19,7 @@ def load_args():
     parser.add_argument('-no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
+    parser.add_argument("-use_box_feats", action='store_true', default=False)
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -54,6 +55,7 @@ def load_args():
     parser.add_argument('-topic_dim', type=int, default=1024,
                         help='the size for topic vector')
     parser.add_argument('-embedding_dim', type=int, default=100)
+    parser.add_argument('-box_feats_dim', type=int, default=2048)
     
     parser.add_argument('-pooling_dim', type=int, default=1024,
                         help='the size for pooling vector')
@@ -117,13 +119,55 @@ class DataContainer():
 
         if args.mode == "train":
             # pass
-          self.train_data = TrainingData(args, self.classes_1600to282)
-          # self.train_data = SampleData(args, self.classes_1600to282)
-          self.val_data = TestData(args, self.classes_1600to282)
+          self.train_data = self.__init_data_loader('train')
+          # self.train_data = self.__init_data_loader('sample')
+          self.val_data = self.__init_data_loader('test')
 
         elif args.mode == "infer":
           self.test_data = TestData(batch_size=args.test_batch_size)
         
+    def __init_data_loader(self, mode):
+        if mode == 'train':
+            batch_size = self.args.batch_size
+            sg_path = self.args.path.train_sg_path
+            box_feats_path = self.args.path.train_box_feats_path
+            img_ids_path = self.args.path.train_imgs_ids_path
+            img2paragraph_path = self.args.path.img2paragraph_path
+        
+        elif mode == 'val':
+            batch_size = self.args.test_batch_size
+            sg_path = self.args.path.val_sg_path
+            box_feats_path = self.args.path.val_box_feats_path
+            img_ids_path = self.args.path.val_imgs_ids_path
+            img2paragraph_path = None
+        
+        elif mode == 'test':
+            batch_size = self.args.test_batch_size
+            sg_path = self.args.path.test_sg_path
+            box_feats_path = self.args.path.test_box_feats_path
+            img_ids_path = self.args.path.test_imgs_ids_path
+            img2paragraph_path = None
+        
+        elif mode == 'sample':
+            batch_size = self.args.test_batch_size
+            sg_path = self.args.path.sample_sg_path
+            box_feats_path = self.args.path.sample_box_feats_path
+            img_ids_path = self.args.path.sample_imgs_ids_path
+            img2paragraph_path = self.args.path.img2paragraph_path
+        
+
+        data_loader = DataLoader(  mode,
+                                   batch_size,
+                                   sg_path,
+                                   box_feats_path,
+                                   self.args.max_n_objs,
+                                   self.args.max_n_rels,
+                                   img_ids_path,
+                                   img2paragraph_path,
+                                   self.classes_1600to282,
+                                   self.args.use_box_feats)
+
+        return data_loader
 
 def main():
     
@@ -142,7 +186,9 @@ def main():
                                   max_n_objs=args.max_n_objs,
                                   max_n_rels=args.max_n_rels,
                                   embedding_dim=args.embedding_dim,
-                                  gcv_feats_dim=args.gcv_feats_dim)
+                                  gcv_feats_dim=args.gcv_feats_dim,
+                                  use_box_feats=args.use_box_feats,
+                                  box_feats_dim=args.box_feats_dim if args.use_box_feats else 0)
 
 
     solver = ParagraphSolver(model, dc, args)

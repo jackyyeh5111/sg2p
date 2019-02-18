@@ -20,19 +20,21 @@ class PathConfig():
 		self.train_imgs_ids_path = self.__path('data/image_ids/train_imgs_ids.json')
 		self.val_imgs_ids_path = self.__path('data/image_ids/val_imgs_ids.json')
 		self.test_imgs_ids_path = self.__path('data/image_ids/test_imgs_ids.json')
+		self.sample_imgs_ids_path = self.__path('data/image_ids/sample_imgs_ids.json')
 
 		self.train_feats_path = self.__path('data/densecap/im2p_train_output.h5')
 		self.val_feats_path = self.__path('data/densecap/im2p_val_output.h5')
 		self.test_feats_path = self.__path('data/densecap/im2p_test_output.h5')
 
 		self.train_box_feats_path = self.__path('data/sg/box_features_train.hkl')
-		self.sample_box_feats_path = self.__path('data/sg/box_features_sample.hkl')
 		self.val_box_feats_path = self.__path('data/sg/box_features_val.hkl')
 		self.test_box_feats_path = self.__path('data/sg/box_features_test.hkl')
+		self.sample_box_feats_path = self.__path('data/sg/box_features_sample.hkl')
 
 		self.train_sg_path = self.__path('data/sg/sg2p_train.pkl')
 		self.val_sg_path = self.__path('data/sg/sg2p_val.pkl')
 		self.test_sg_path = self.__path('data/sg/sg2p_test.pkl')
+		self.sample_sg_path = self.__path('data/sg/sg2p_sample.pkl')
 
 		self.VG_SGG_dict = self.__path('data/sg/VG-SGG-dicts_jacky.json')
 		# self.classes_path = '/2t_1/jackyyeh/scene-graph-TF-release/data_tools/VG/jacky_object_list.txt'
