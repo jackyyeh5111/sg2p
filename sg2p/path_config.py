@@ -38,8 +38,8 @@ class PathConfig():
 
 		self.VG_SGG_dict = self.__path('data/sg/VG-SGG-dicts_jacky.json')
 		# self.classes_path = '/2t_1/jackyyeh/scene-graph-TF-release/data_tools/VG/jacky_object_list.txt'
-		self.classes_1600_path = '../../bottom-up-attention/data/genome/1600-400-20' # 1600 objects, 400 attributes, 20 relations
-
+		self.BUA_dir = '../../bottom-up-attention/data/genome/1600-400-20' # 1600 objects, 400 attributes, 20 relations
+		
 
 		self.word2idx_path = self.__path('data/word2idx.json')
 		self.idx2word_path = self.__path('data/idx2word.json')

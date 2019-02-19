@@ -126,11 +126,11 @@ class ParagraphSolver(object):
         for i in tqdm(range(train_data.num_batch)):
             batch_data = train_data.next_batch()
 
-        
             feed_dict = {
                  # self.model.densecap_feats: batch_data["densecap_feats"],
                  self.model.objs: batch_data["objs"],
                  self.model.triples: batch_data["triples"],
+                 self.model.attrs: batch_data["attrs"],
                  self.model.num_distribution: batch_data["num_distribution"],
                  self.model.captions: batch_data["captions"],
             }
@@ -209,6 +209,7 @@ class ParagraphSolver(object):
             feed_dict = {
                     self.model.objs: batch_data["objs"],
                     self.model.triples: batch_data["triples"],
+                    self.model.attrs: batch_data["attrs"],
             }
 
             if self.use_box_feats:

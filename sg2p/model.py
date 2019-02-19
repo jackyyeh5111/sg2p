@@ -183,10 +183,12 @@ class Regions_Hierarchical():
                        wordRNN_lstm_dim,
                        gcv_feats_dim, # =gconv_dim
                        use_box_feats,
+                       use_gcv_mlayer,
                        max_n_objs=30,
                        max_n_rels=150,
                        n_objs=282,
                        n_preds=50,
+                       n_attrs=400,
                        embedding_dim=100,
                        box_feats_dim=2048,
                        # pred_embed_dim=32,
@@ -222,6 +224,7 @@ class Regions_Hierarchical():
             self.max_n_objs = max_n_objs
             self.max_n_rels = max_n_rels
             self.use_box_feats = use_box_feats
+            self.use_gcv_mlayer = use_gcv_mlayer
             topic_dim = wordRNN_lstm_dim * 2
 
             self.w_init = WeightInit()
@@ -268,15 +271,16 @@ class Regions_Hierarchical():
 
             
             # word LSTM
-            # self.drop_prob = 0.0
+            # self.drop_prob = 0.2
             # word_cells = []
             # for _ in range(self.wordRNN_numlayer):
-            #     word_cell = tf.contrib.rnn.BasicLSTMCell(self.wordRNN_lstm_dim, state_is_tuple=True)
+            #     word_cell = tf.nn.rnn_cell.LSTMCell(self.wordRNN_lstm_dim, state_is_tuple=True, initializer=tf.orthogonal_initializer())
+            #     # word_cell = tf.contrib.rnn.BasicLSTMCell(self.wordRNN_lstm_dim, state_is_tuple=True)
             #     word_cell = tf.nn.rnn_cell.DropoutWrapper(word_cell, output_keep_prob=1-self.drop_prob)
             #     word_cells.append(word_cell)
                 
             # self.word_LSTM = tf.contrib.rnn.MultiRNNCell(cells=word_cells, state_is_tuple=True)
-            # self.word_LSTM = tf.contrib.rnn.BasicLSTMCell(wordRNN_lstm_dim, state_is_tuple=True)
+            
             self.word_LSTM = tf.nn.rnn_cell.LSTMCell(self.wordRNN_lstm_dim, state_is_tuple=True, initializer=tf.orthogonal_initializer())
 
             self.embed_word_W = tf.Variable(tf.random_uniform([wordRNN_lstm_dim, self.vocab_size], -0.1,0.1), name='embed_word_W')
@@ -293,8 +297,8 @@ class Regions_Hierarchical():
             # receive the ground truth words, which has been changed to idx use word2idx function
             self.captions = tf.placeholder(tf.int32, [None, self.S_max, self.N_max+1])
             self.objs = tf.placeholder(tf.int32, [None, max_n_objs+1])
-            # self.objs_idx = tf.placeholder(tf.int32, [batch_size, 30])
             self.triples = tf.placeholder(tf.int32, [None, max_n_rels, 3])
+            self.attrs = tf.placeholder(tf.int32, [None, max_n_objs+1, 3]) # align with objs
 
             # self.caption_labels = tf.placeholder(tf.int32, [None, self.S_max, self.label_size])
 
@@ -318,12 +322,19 @@ class Regions_Hierarchical():
                                         [n_preds, embedding_dim],
                                         initializer=self.w_init.random_uniform)
 
+            self.attr_embeddings = tf.get_variable("attr_embeddings",
+                                        # n_objs+1 for padding 
+                                        [n_attrs+1, embedding_dim],
+                                        initializer=self.w_init.random_uniform)
+
+
             gconv_kwargs = {
                 'input_dim': embedding_dim,
                 'output_dim': gcv_feats_dim,
                 'hidden_dim': gconv_hidden_dim,
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
+                'use_gcv_mlayer': use_gcv_mlayer,
               }
             self.gconv = GraphTripleConv(**gconv_kwargs)
 
@@ -356,6 +367,7 @@ class Regions_Hierarchical():
         # features = self.densecap_feats # (50, 4096)  
         objs = self.objs
         triples = self.triples  
+        attrs = self.attrs 
         captions = self.captions
         box_feats = self.box_feats
         batch_size = tf.shape(objs)[0]
@@ -367,19 +379,16 @@ class Regions_Hierarchical():
         # tf.split(triples, [2, 1], axis=2)
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
 
-
-        # print edges
-        # print p
-        # raw_input()
-
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
-        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p) 
+        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p)
+        attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        # print obj_vecs
-        # print pred_vecs
+        # build attrs_mask
+        padding_attr = 400
+        attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
-        obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
-
+        # graph convolution 
+        obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         if self.use_box_feats:
@@ -474,18 +483,21 @@ class Regions_Hierarchical():
 
         objs = self.objs
         triples = self.triples  
+        attrs = self.attrs 
         box_feats = self.box_feats
 
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
         
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
         pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p) 
+        attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        # print obj_vecs
-        # print pred_vecs
+        # build attrs_mask
+        padding_attr = 400
+        attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
-        obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges)
-
+        # graph convolution
+        obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         if self.use_box_feats:
