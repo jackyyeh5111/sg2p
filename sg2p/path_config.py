@@ -5,8 +5,9 @@ import random
 class PathConfig():
 	''' define data paths '''
 
-	def __init__(self): 
+	def __init__(self, n_obj): 
 		
+
 		self.log_dir = self.__path('logs/')
 		self.model_dir = self.__path("models/")
 		self.result_dir = self.__path("results/")
@@ -31,12 +32,12 @@ class PathConfig():
 		self.test_box_feats_path = self.__path('data/sg/box_features_test.hkl')
 		self.sample_box_feats_path = self.__path('data/sg/box_features_sample.hkl')
 
-		self.train_sg_path = self.__path('data/sg/sg2p_train.pkl')
-		self.val_sg_path = self.__path('data/sg/sg2p_val.pkl')
-		self.test_sg_path = self.__path('data/sg/sg2p_test.pkl')
-		self.sample_sg_path = self.__path('data/sg/sg2p_sample.pkl')
+		self.train_sg_path = self.__path('data/sg/resnet152_%d/sg2p_train.pkl' % n_obj)
+		self.val_sg_path = self.__path('data/sg/resnet152_%d/sg2p_val.pkl' % n_obj)
+		self.test_sg_path = self.__path('data/sg/resnet152_%d/sg2p_test.pkl' % n_obj)
+		self.sample_sg_path = self.__path('data/sg/resnet152_%d/sg2p_sample.pkl' % n_obj)
 
-		self.VG_SGG_dict = self.__path('data/sg/VG-SGG-dicts_jacky.json')
+		self.VG_SGG_dict = self.__path('data/sg/resnet152_%d/VG-SGG-dicts_%d.json' % (n_obj, n_obj))
 		# self.classes_path = '/2t_1/jackyyeh/scene-graph-TF-release/data_tools/VG/jacky_object_list.txt'
 		self.classes_1600_path = '../../bottom-up-attention/data/genome/1600-400-20' # 1600 objects, 400 attributes, 20 relations
 

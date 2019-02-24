@@ -34,6 +34,9 @@ class DataLoader(object):
 
         self.objs, self.triples, self.n_objs = self.load_graphs()
 
+        # print sum(self.n_objs) / float(len(self.n_objs))
+        # raw_input()
+
         if use_box_feats:
             self.box_feats = hickle.load(box_feats_path)
 
@@ -41,7 +44,7 @@ class DataLoader(object):
         # type of n_objs: list
         if mode in ['test']: assert 0 not in self.n_objs 
 
-        if mode in ['train', 'sample']:
+        if mode in ['train', 'val', 'sample']:
             
             # only training data requires ground truth
             self.num_distribution, self.captions = self.load_data()
@@ -69,7 +72,7 @@ class DataLoader(object):
             }
             self.num_batch = int(self.size / self.batch_size)
             
-        elif mode in ['val', 'test']:
+        elif mode in ['test']:
             self.data = {
                 'objs': self.objs,
                 'triples': self.triples,

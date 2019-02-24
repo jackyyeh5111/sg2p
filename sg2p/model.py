@@ -171,7 +171,7 @@ class SentRNN():
 
         topic_vec = tf.nn.relu( self.fc2( _hidden ) )
 
-        return pred_stop, topic_vec, context, alpha, (h, c)
+        return pred_stop, topic_vec, context, alpha, (c, h)
 
 
 
@@ -388,6 +388,7 @@ class Regions_Hierarchical():
             features = obj_vecs
 
         print features
+        # raw_input()
 
         loss = 0.0
         loss_sent = tf.constant(0.0)

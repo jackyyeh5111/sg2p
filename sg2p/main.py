@@ -35,8 +35,9 @@ def load_args():
     parser.add_argument("-ref_test_sents", action="store_true", default=False)
     parser.add_argument("-save_every", type=int, default=50)
     parser.add_argument("-log_every", type=int, default=50)
-    parser.add_argument("-patience", type=int, default=4)
+    parser.add_argument("-patience", type=int, default=6)
     parser.add_argument("-checkpoint", type=str, default=None, help="The directory of save model.")
+
 
     # model parameters
     parser.add_argument("-update_rule", type=str, default="adam")
@@ -67,6 +68,7 @@ def load_args():
 
     parser.add_argument('-max_n_objs', type=int, default=30)
     parser.add_argument('-max_n_rels', type=int, default=150)
+    parser.add_argument("-n_obj", type=int)
 
     parser.add_argument("-batch_size", type=int, default=128)
     parser.add_argument("-test_batch_size", type=int, default=256)
@@ -82,6 +84,9 @@ def load_args():
     
     if args.mode == "infer" and not args.model_name:
         parser.error('model is not given')
+
+    if args.n_obj == None:
+        parser.error('n_obj is not given')
 
     return args
 
@@ -120,6 +125,8 @@ class DataContainer():
         if args.mode == "train":
             # pass
           self.train_data = self.__init_data_loader('train')
+          # self.train_data = self.__init_data_loader('val')
+
           # self.train_data = self.__init_data_loader('sample')
           self.val_data = self.__init_data_loader('test')
 
@@ -172,7 +179,7 @@ class DataContainer():
 def main():
     
     args = load_args()
-    args.path = PathConfig()
+    args.path = PathConfig(args.n_obj)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 

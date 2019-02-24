@@ -63,6 +63,10 @@ def evaluate(get_scores=False,
     # raw_cand = [c]
 
 
+    # import hickle
+    # n_sents = hickle.load('./data/n_test_data_sents.hkl')
+
+
     # make dictionary
     ref = {}
     for i, caption in enumerate(raw_ref):
@@ -74,6 +78,9 @@ def evaluate(get_scores=False,
     for i, caption in enumerate(raw_cand):
         caption = caption.strip().lower()
         if caption != '':
+            # caption = caption.split(' . ')[:n_sents[i]]
+            # caption = caption.split(' . ')[:5]
+            # caption = ' . '.join(caption)
             cand[i] = [caption]
 
     ## for SPICE ###

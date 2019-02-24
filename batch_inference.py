@@ -16,10 +16,6 @@ op.add_option("-e", dest="end", type=int, default=100000 )
 op.add_option("--fixed_n_sent",
                   dest="fixed_n_sent", action="store_true", default=False, 
                   help="generate fixed number(S_max) of sent of a paragraph while inferencing")
-op.add_option("--sentRNN_lstm_dim",
-                  dest="sentRNN_lstm_dim", type=int, default=512)
-op.add_option("--wordRNN_lstm_dim",
-              dest="wordRNN_lstm_dim", type=int, default=512)
     
 (opts, args) = op.parse_args()
 if not opts.process_name:  op.error('process_name is not given')
@@ -35,7 +31,20 @@ candidate_paths = glob.glob(results_path + "/val_candidate*")
 # print epochs
 
 
-candidate_paths = sorted(candidate_paths, key=lambda c_path: int(c_path.strip('.txt').split('_')[-1]))
+# candidate_paths = sorted(candidate_paths, key=lambda c_path: int(c_path.strip('.txt').split('_')[-1]))
+
+# for c_path in candidate_paths:
+#     epoch = int(c_path.strip('.txt').split('_')[-1])
+
+#     if epoch >= opts.start and epoch <= opts.end:
+
+#         final_scores = evaluate(get_scores=True, candidate_path=c_path)
+        
+#         msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f, SPICE: %f" 
+#                 % (epoch, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+#                 final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'], final_scores['SPICE']))
+
+#         print (msg)   
 
 
 o_path = os.path.join(results_path, 'new_score.txt')
