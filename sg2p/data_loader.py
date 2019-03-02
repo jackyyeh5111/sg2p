@@ -53,6 +53,7 @@ class DataLoader(object):
 
             # filter entry
             keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=36 and n_obj<=self.max_n_objs]
+
             self.num_distribution = self.num_distribution[keep_entry]
             self.captions = self.captions[keep_entry]
             self.objs = self.objs[keep_entry]

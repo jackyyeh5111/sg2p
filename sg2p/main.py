@@ -109,7 +109,7 @@ class DataContainer():
         self.idx2pred, self.classes_base = loadMapDict(self.args.path.VG_SGG_dict)
 
         self.v2k_classes_base = {} # value to key (start from '1')
-        for key, value in self.classes_282.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
+        for key, value in self.classes_base.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
             self.v2k_classes_base[value] = int(key)
 
         # Load classes_1600 (from bottom-up objects list)
@@ -134,7 +134,6 @@ class DataContainer():
             # pass
           self.train_data = self.__init_data_loader('train')
           # self.train_data = self.__init_data_loader('val')
-
           # self.train_data = self.__init_data_loader('sample')
           self.val_data = self.__init_data_loader('test')
 
@@ -207,7 +206,8 @@ def main():
                                   use_box_feats=args.use_box_feats,
                                   use_attrs=args.use_attrs,
                                   use_gcv_mlayer=args.use_gcv_mlayer,
-                                  box_feats_dim=args.box_feats_dim if args.use_box_feats else 0)
+                                  box_feats_dim=args.box_feats_dim if args.use_box_feats else 0,
+                                  n_objs=args.n_obj)
 
 
     solver = ParagraphSolver(model, dc, args)
