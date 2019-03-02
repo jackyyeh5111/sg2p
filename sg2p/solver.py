@@ -37,6 +37,7 @@ class ParagraphSolver(object):
         self.batch_size = self.args.batch_size
         self.test_batch_size = self.args.test_batch_size
         self.use_box_feats = self.args.use_box_feats
+        self.use_attrs = self.args.use_attrs
         self.learning_rate = self.args.learning_rate
         self.log_path = os.path.join(self.args.path.log_dir, self.process_name) 
         self.model_path = os.path.join(self.args.path.model_dir, self.process_name)
@@ -126,7 +127,6 @@ class ParagraphSolver(object):
         for i in tqdm(range(train_data.num_batch)):
             batch_data = train_data.next_batch()
 
-        
             feed_dict = {
                  # self.model.densecap_feats: batch_data["densecap_feats"],
                  self.model.objs: batch_data["objs"],
@@ -137,7 +137,9 @@ class ParagraphSolver(object):
 
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
-            
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
+
             _, _loss, _loss_sent, _loss_word = self.sess.run(
                 [train_op, 
                  loss, 
@@ -213,6 +215,8 @@ class ParagraphSolver(object):
 
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
             
             # print batch_data["objs"][0].shape
             # print batch_data["triples"][0].shape
@@ -250,7 +254,7 @@ class ParagraphSolver(object):
         else:
             self.best_score = current_score
             self.score_no_change = 0
-            self.best_epoch = epoch
+            self.best_epoch = epoch+1
         
         return False
         

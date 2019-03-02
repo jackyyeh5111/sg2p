@@ -48,13 +48,22 @@ class GraphTripleConv():
   A single layer of scene graph convolution.
   """
   def __init__(self, input_dim, output_dim=None, hidden_dim=512,
-               pooling='avg', mlp_normalization=None, dropout_ratio=0.5):
+               attr_hidden_dim=None, 
+               pooling='avg', mlp_normalization=None, dropout_ratio=0.5, 
+               use_gcv_mlayer=False, max_n_attr=3, use_attrs=False):
     
     if output_dim is None:
       output_dim = input_dim
     self.input_dim = input_dim
     self.output_dim = output_dim
     self.hidden_dim = hidden_dim
+    self.max_n_attr = max_n_attr
+    self.use_attrs = use_attrs
+
+    if attr_hidden_dim is None:
+      attr_hidden_dim = hidden_dim
+    self.attr_hidden_dim = attr_hidden_dim
+
 
     self.w_init = WeightInit()
     
@@ -64,6 +73,9 @@ class GraphTripleConv():
     self.layer1 = Dense(hidden_dim, kernel_initializer=self.w_init.xavier)
     self.layer2 = Dense(2 * hidden_dim + output_dim, kernel_initializer=self.w_init.xavier)
 
+    self.attr_layer1 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
+    self.attr_layer2 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
+
     self.layer3 = Dense(hidden_dim, kernel_initializer=self.w_init.xavier)
     self.layer4 = Dense(output_dim, kernel_initializer=self.w_init.xavier)
 
@@ -71,6 +83,7 @@ class GraphTripleConv():
 
     self.dropout_ratio = dropout_ratio
     self.mlp_normalization = mlp_normalization
+    self.use_gcv_mlayer = use_gcv_mlayer
 
   def _batch_norm(self, x, mode, name=None, reuse=None):
         return tf.contrib.layers.batch_norm(inputs=x,
@@ -92,13 +105,14 @@ class GraphTripleConv():
     
     return vecs
 
-  def __call__(self, mode, obj_vecs, pred_vecs, edges):
+  def __call__(self, mode, obj_vecs, pred_vecs, edges, attr_vecs=None, attrs_mask=None):
     """
     Inputs:
     - obj_vecs: FloatTensor of shape (O, D) giving vectors for all objects
     - pred_vecs: FloatTensor of shape (T, D) giving vectors for all predicates
     - edges: LongTensor of shape (T, 2) where edges[k] = [i, j] indicates the
       presence of a triple [obj_vecs[i], pred_vecs[k], obj_vecs[j]]
+    - attr_vecs: FloatTensor of shape (O, 3, D) giving vectors for all objects  
     
     Outputs:
     - new_obj_vecs: FloatTensor of shape (O, D) giving new vectors for objects
@@ -107,7 +121,7 @@ class GraphTripleConv():
     assert mode in ['train', 'test']
 
     dtype = obj_vecs.dtype
-    O, T, D = tf.shape(obj_vecs)[1], tf.shape(pred_vecs)[1], tf.shape(obj_vecs)[2]
+    O, T = tf.shape(obj_vecs)[1], tf.shape(pred_vecs)[1]
     batch_size = tf.shape(obj_vecs)[0]
 
     Din, H, Dout = self.input_dim, self.hidden_dim, self.output_dim
@@ -133,9 +147,12 @@ class GraphTripleConv():
     # Pass through net1 to get new triple vecs; shape is (T, 2 * H + Dout)
     cur_t_vecs = tf.concat([cur_s_vecs, pred_vecs, cur_o_vecs], axis=2)
     cur_t_vecs = self.activation( self.layer1(cur_t_vecs) )
-    cur_t_vecs = self.middle_layer(mode, cur_t_vecs)
+    if self.use_gcv_mlayer:
+      cur_t_vecs = self.middle_layer(mode, cur_t_vecs)
+    
     new_t_vecs = self.activation( self.layer2(cur_t_vecs) )
-    new_t_vecs = self.middle_layer(mode, new_t_vecs)
+    if self.use_gcv_mlayer:
+      new_t_vecs = self.middle_layer(mode, new_t_vecs)
 
 
     # Break apart into new s, p, and o vecs; s and o vecs have shape (T, H) and
@@ -211,14 +228,46 @@ class GraphTripleConv():
     print new_p_vecs
     # raw_input()
 
+
+    # attr_vecs: FloatTensor of shape (B, O, 3, D) giving vectors for all objects  
+    # obj_vecs: FloatTensor of shape (B, O, D) giving vectors for all objects
+    
+    if self.use_attrs:
+      tile_obj_vecs = tf.tile(obj_vecs, [1, 3, 1]) # (B, O*A, D)
+      tile_obj_vecs = tf.reshape(tile_obj_vecs, [batch_size, O, self.max_n_attr, self.input_dim])
+
+      cur_attr_vecs = tf.concat([tile_obj_vecs, attr_vecs], axis=3)
+    
+      cur_attr_vecs = self.attr_layer1(cur_attr_vecs)
+      if self.use_gcv_mlayer:
+        cur_attr_vecs = self.middle_layer(mode, cur_attr_vecs)
+      
+      cur_attr_vecs = self.attr_layer2(cur_attr_vecs)
+      cur_attr_vecs = cur_attr_vecs * tf.expand_dims(attrs_mask, axis=3)
+
+      pooled_attr_vecs = tf.reduce_mean(cur_attr_vecs, axis=2)
+
+      # print pooled_attr_vecs
+      # print pooled_obj_vecs
+      # raw_input()
+
+      # fuse attrs, objs (include relation info)
+      pooled_fuse_vecs = tf.concat([pooled_attr_vecs, pooled_obj_vecs], axis=2)
+
+    else: # use obj vecs only
+      pooled_fuse_vecs = pooled_obj_vecs
+
+
     # Send pooled object vectors through net2 to get output object vectors,
     # of shape (O, Dout)
-    pooled_obj_vecs = self.activation( self.layer3(pooled_obj_vecs) )
-    pooled_obj_vecs = self.middle_layer(mode, pooled_obj_vecs)
-    new_obj_vecs = self.activation( self.layer4(pooled_obj_vecs) )
+    pooled_fuse_vecs = self.activation( self.layer3(pooled_fuse_vecs) )
+    if self.use_gcv_mlayer:
+      pooled_fuse_vecs = self.middle_layer(mode, pooled_fuse_vecs)
+    
+    new_obj_vecs = self.activation( self.layer4(pooled_fuse_vecs) )
 
-    print pooled_obj_vecs # (128, 30, 512)
-    print new_obj_vecs # (128, 30, H)
+    print pooled_fuse_vecs # (128, 31, 512)
+    print new_obj_vecs # (128, 31, H)
     # raw_input()
 
 

@@ -7,7 +7,6 @@ import hickle
 import h5py
 import math
 
-
 class DataLoader(object):
     def __init__(self, mode,
                        batch_size,
@@ -15,10 +14,12 @@ class DataLoader(object):
                        box_feats_path,
                        max_n_objs,
                        max_n_rels,
+                       max_n_attrs,
                        img_ids_path,
                        img2paragraph_path,
-                       classes_1600to282,
-                       use_box_feats):
+                       classes_1600_mapping,
+                       use_box_feats,
+                       use_attrs):
 
         assert mode in ['train', 'val', 'test', 'sample']
 
@@ -27,12 +28,13 @@ class DataLoader(object):
         self.sg_path = sg_path
         self.max_n_objs = max_n_objs
         self.max_n_rels = max_n_rels
+        self.max_n_attrs = max_n_attrs
         self.img_ids_path = img_ids_path
         self.img2paragraph_path = img2paragraph_path
-        self.classes_1600to282 = classes_1600to282
+        self.classes_1600_mapping = classes_1600_mapping
         
 
-        self.objs, self.triples, self.n_objs = self.load_graphs()
+        self.objs, self.triples, self.n_objs, self.attrs = self.load_graphs()
 
         # print sum(self.n_objs) / float(len(self.n_objs))
         # raw_input()
@@ -50,7 +52,7 @@ class DataLoader(object):
             self.num_distribution, self.captions = self.load_data()
 
             # filter entry
-            keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=10 and n_obj<=self.max_n_objs]
+            keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=36 and n_obj<=self.max_n_objs]
             self.num_distribution = self.num_distribution[keep_entry]
             self.captions = self.captions[keep_entry]
             self.objs = self.objs[keep_entry]
@@ -82,6 +84,8 @@ class DataLoader(object):
 
         if use_box_feats:
             self.data['box_feats'] = self.box_feats
+        if use_attrs:
+            self.data['attrs'] = self.attrs
 
 
     def load_data(self):
@@ -105,7 +109,7 @@ class DataLoader(object):
 
         return num_distribution, captions
 
-    def load_graphs(self):
+    def load_graphs(self, attr_thres=0.08):
         '''
         entries: list of dictionary
         entries[i]['labels']: shape of (O, )
@@ -124,22 +128,28 @@ class DataLoader(object):
             entries = pickle.load(f)
 
         objs = []
+        attrs = []
         n_objs = []
         triples = []
         obj_count = {}
         padding = 0
+        padding_attr = 400
         for i, entry in enumerate(entries):
-            i_objs = [self.classes_1600to282[obj] for obj in entry['labels']]
+            i_objs = [self.classes_1600_mapping[obj] for obj in entry['labels']]
             i_triples = entry['rels']
+            i_attr = entry['attrs']
+            i_attrs_conf = entry['attrs_conf']
 
             obj_count[len(i_objs)] = obj_count.get(len(i_objs), 0) + 1
             
+            # objects
             if len(i_objs) < self.max_n_objs:
                 i_objs += [padding] * (self.max_n_objs + 1 - len(i_objs)) # padding, 282 is padding idx for objs
             else:
                 i_objs = i_objs[:self.max_n_objs] 
                 i_objs = i_objs + [padding] # 31st idx is padding
 
+            # relations
             if len(i_triples) < self.max_n_rels:
                 pad_triples = np.zeros((self.max_n_rels-len(i_triples), 3))
                 pad_triples[:, :2] = self.max_n_objs + 1
@@ -147,11 +157,25 @@ class DataLoader(object):
             else:
                 i_triples = i_triples[:self.max_n_rels] 
 
+            # attrs
+            attr_pad_idx = np.where(i_attrs_conf > attr_thres)
+            i_attr[attr_pad_idx] = padding_attr
+
+            # shape of attr have to align with shape of objs 
+            if len(i_attr) < self.max_n_objs:
+                np_pad_attr = np.full((self.max_n_objs + 1 - len(i_attr), self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+            else:
+                i_attr = i_attr[:self.max_n_objs] 
+                np_pad_attr = np.full((1, self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+
             objs.append(i_objs)
             triples.append(i_triples)
             n_objs.append(len(entry['labels']))
+            attrs.append(i_attr)
 
-        return np.array(objs), np.array(triples), n_objs
+        return np.array(objs), np.array(triples), n_objs, np.array(attrs)
 
     def next_batch(self):
 

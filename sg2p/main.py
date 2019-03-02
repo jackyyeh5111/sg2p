@@ -20,6 +20,8 @@ def load_args():
                         help='disables CUDA training')
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
     parser.add_argument("-use_box_feats", action='store_true', default=False)
+    parser.add_argument("-use_attrs", action='store_true', default=False)
+    parser.add_argument("-use_gcv_mlayer", action='store_true', default=False, help="use gcv middle layer")
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -42,11 +44,11 @@ def load_args():
     # model parameters
     parser.add_argument("-update_rule", type=str, default="adam")
     parser.add_argument("-learning_rate", type=float, default=1e-4)
-    parser.add_argument("-n_epochs", type=int, default=1000)
+    parser.add_argument("-n_epochs", type=int, default=2000)
     parser.add_argument("-sentRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-wordRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-num_boxes", type=int, default=50)
-    parser.add_argument("-gcv_feats_dim", type=int, default=128)
+    parser.add_argument("-gcv_feats_dim", type=int, default=512)
     parser.add_argument("-attention_dim", type=int, default=4096)
     parser.add_argument("-project_dim", type=int, default=1024)
     parser.add_argument('-word_lstm_layer', type=int, default=1,
@@ -60,15 +62,15 @@ def load_args():
     
     parser.add_argument('-pooling_dim', type=int, default=1024,
                         help='the size for pooling vector')
-    parser.add_argument('-embed_dim', type=int, default=300)
     parser.add_argument('-lambda_sentence', type=int, default=5,
                         help='the cost lambda for sentence loss function')
     parser.add_argument('-lambda_word', type=int, default=1,
                         help='the cost lambda for word loss function')
 
-    parser.add_argument('-max_n_objs', type=int, default=30)
-    parser.add_argument('-max_n_rels', type=int, default=150)
-    parser.add_argument("-n_obj", type=int)
+    parser.add_argument('-max_n_objs', type=int, default=50)
+    parser.add_argument('-max_n_rels', type=int, default=300)
+    parser.add_argument('-max_n_attrs', type=int, default=3)
+    parser.add_argument("-n_obj", dest='n_obj', type=int)
 
     parser.add_argument("-batch_size", type=int, default=128)
     parser.add_argument("-test_batch_size", type=int, default=256)
@@ -104,11 +106,11 @@ class DataContainer():
 
         self.embed_matrix = np.load( args.path.embed_matrix_path )
 
-        self.idx2pred, self.classes_282 = loadMapDict(self.args.path.VG_SGG_dict)
+        self.idx2pred, self.classes_base = loadMapDict(self.args.path.VG_SGG_dict)
 
-        self.v2k_classes_282 = {} # value to key (start from '1')
+        self.v2k_classes_base = {} # value to key (start from '1')
         for key, value in self.classes_282.items():    # for name, age in dictionary.iteritems():  (for Python 2.x)
-            self.v2k_classes_282[value] = int(key)
+            self.v2k_classes_base[value] = int(key)
 
         # Load classes_1600 (from bottom-up objects list)
         self.classes_1600 = []
@@ -117,10 +119,16 @@ class DataContainer():
                 self.classes_1600.append(object.split(',')[0].lower().strip())
 
         # map classes_1600 to classes_282
-        self.classes_1600to282 = {}
+        self.classes_1600_mapping = {}
         for i, c in enumerate(self.classes_1600):
-            if c in self.v2k_classes_282.keys():
-                self.classes_1600to282[i] = self.v2k_classes_282[c]
+            if c in self.v2k_classes_base.keys():
+                self.classes_1600_mapping[i] = self.v2k_classes_base[c]
+
+        # Load attributes
+        self.attrs = []
+        with open(os.path.join(self.args.path.classes_1600_path, 'attributes_vocab.txt')) as f:
+            for att in f.readlines():
+                self.attrs.append(att.split(',')[0].lower().strip())
 
         if args.mode == "train":
             # pass
@@ -169,10 +177,12 @@ class DataContainer():
                                    box_feats_path,
                                    self.args.max_n_objs,
                                    self.args.max_n_rels,
+                                   self.args.max_n_attrs,
                                    img_ids_path,
                                    img2paragraph_path,
-                                   self.classes_1600to282,
-                                   self.args.use_box_feats)
+                                   self.classes_1600_mapping,
+                                   self.args.use_box_feats,
+                                   self.args.use_attrs)
 
         return data_loader
 
@@ -195,6 +205,8 @@ def main():
                                   embedding_dim=args.embedding_dim,
                                   gcv_feats_dim=args.gcv_feats_dim,
                                   use_box_feats=args.use_box_feats,
+                                  use_attrs=args.use_attrs,
+                                  use_gcv_mlayer=args.use_gcv_mlayer,
                                   box_feats_dim=args.box_feats_dim if args.use_box_feats else 0)
 
 
