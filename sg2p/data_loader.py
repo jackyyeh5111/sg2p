@@ -7,7 +7,6 @@ import hickle
 import h5py
 import math
 
-
 class DataLoader(object):
     def __init__(self, mode,
                        batch_size,
@@ -18,8 +17,9 @@ class DataLoader(object):
                        max_n_attrs,
                        img_ids_path,
                        img2paragraph_path,
-                       classes_1600to282,
-                       use_box_feats):
+                       classes_1600_mapping,
+                       use_box_feats,
+                       use_attrs):
 
         assert mode in ['train', 'val', 'test', 'sample']
 
@@ -31,7 +31,7 @@ class DataLoader(object):
         self.max_n_attrs = max_n_attrs
         self.img_ids_path = img_ids_path
         self.img2paragraph_path = img2paragraph_path
-        self.classes_1600to282 = classes_1600to282
+        self.classes_1600_mapping = classes_1600_mapping
         
 
         self.objs, self.triples, self.n_objs, self.attrs = self.load_graphs()
@@ -49,7 +49,7 @@ class DataLoader(object):
             self.num_distribution, self.captions = self.load_data()
 
             # filter entry
-            keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=10 and n_obj<=self.max_n_objs]
+            keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=36 and n_obj<=self.max_n_objs]
             self.num_distribution = self.num_distribution[keep_entry]
             self.captions = self.captions[keep_entry]
             self.objs = self.objs[keep_entry]
@@ -66,7 +66,6 @@ class DataLoader(object):
             self.data = {
                 'objs': self.objs,
                 'triples': self.triples,
-                'attrs': self.attrs,
                 'num_distribution': self.num_distribution,
                 'captions': self.captions,
             }
@@ -76,13 +75,14 @@ class DataLoader(object):
             self.data = {
                 'objs': self.objs,
                 'triples': self.triples,
-                'attrs': self.attrs,
             }
             self.num_batch = int( math.ceil( self.size / float(self.batch_size)) )
 
 
         if use_box_feats:
             self.data['box_feats'] = self.box_feats
+        if use_attrs:
+            self.data['attrs'] = self.attrs
 
 
     def load_data(self):
@@ -132,7 +132,7 @@ class DataLoader(object):
         padding = 0
         padding_attr = 400
         for i, entry in enumerate(entries):
-            i_objs = [self.classes_1600to282[obj] for obj in entry['labels']]
+            i_objs = [self.classes_1600_mapping[obj] for obj in entry['labels']]
             i_triples = entry['rels']
             i_attr = entry['attrs']
             i_attrs_conf = entry['attrs_conf']

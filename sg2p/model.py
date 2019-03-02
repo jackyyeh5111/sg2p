@@ -171,7 +171,7 @@ class SentRNN():
 
         topic_vec = tf.nn.relu( self.fc2( _hidden ) )
 
-        return pred_stop, topic_vec, context, alpha, (h, c)
+        return pred_stop, topic_vec, context, alpha, (c, h)
 
 
 
@@ -183,6 +183,7 @@ class Regions_Hierarchical():
                        wordRNN_lstm_dim,
                        gcv_feats_dim, # =gconv_dim
                        use_box_feats,
+                       use_attrs,
                        use_gcv_mlayer,
                        max_n_objs=30,
                        max_n_rels=150,
@@ -191,9 +192,6 @@ class Regions_Hierarchical():
                        n_attrs=400,
                        embedding_dim=100,
                        box_feats_dim=2048,
-                       # pred_embed_dim=32,
-                       # obj_embed_dim=100,
-                       # gconv_dim=128,
                        gconv_hidden_dim=512,
                        gconv_pooling='avg',
                        gconv_num_layers=5,
@@ -224,6 +222,7 @@ class Regions_Hierarchical():
             self.max_n_objs = max_n_objs
             self.max_n_rels = max_n_rels
             self.use_box_feats = use_box_feats
+            self.use_attrs = use_attrs
             self.use_gcv_mlayer = use_gcv_mlayer
             topic_dim = wordRNN_lstm_dim * 2
 
@@ -335,6 +334,7 @@ class Regions_Hierarchical():
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
                 'use_gcv_mlayer': use_gcv_mlayer,
+                'use_attrs': use_attrs,
               }
             self.gconv = GraphTripleConv(**gconv_kwargs)
 
@@ -381,14 +381,19 @@ class Regions_Hierarchical():
 
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
         pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p)
-        attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        # build attrs_mask
-        padding_attr = 400
-        attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
+        if self.use_attrs:
+            attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        # graph convolution 
-        obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            # build attrs_mask
+            padding_attr = 400
+            attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
+
+            # graph convolution 
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+        else:
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
+
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         if self.use_box_feats:
@@ -490,14 +495,19 @@ class Regions_Hierarchical():
         
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
         pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p) 
-        attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
+        
+        if self.use_attrs:
+            attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        # build attrs_mask
-        padding_attr = 400
-        attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
+            # build attrs_mask
+            padding_attr = 400
+            attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
-        # graph convolution
-        obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            # graph convolution
+            obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+        else:
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
+
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         if self.use_box_feats:
