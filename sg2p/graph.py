@@ -6,7 +6,6 @@ import numpy as np
 import random
 import json
 import h5py
-from RNN import BasicLSTMCell
 
 import tensorflow as tf
 from tensorflow.python.layers.core import Dense

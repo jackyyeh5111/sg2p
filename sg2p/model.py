@@ -183,9 +183,9 @@ class Regions_Hierarchical():
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
                        feats_dim, # =gconv_dim
-                       max_n_objs=30,
-                       max_n_rels=150,
-                       n_objs=282,
+                       n_objs,
+                       max_n_objs,
+                       max_n_rels,
                        n_preds=50,
                        embedding_dim=100,
                        # pred_embed_dim=32,

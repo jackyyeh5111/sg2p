@@ -9,6 +9,8 @@ from path_config import PathConfig
 from util import *
 import os
 
+tf.set_random_seed(123)
+
 # ex: python main.py -m train -p test 
 # ex: python main.py -m train -p test -gpu 1
 
@@ -34,17 +36,17 @@ def load_args():
     parser.add_argument("-ref_test_sents", action="store_true", default=False)
     parser.add_argument("-save_every", type=int, default=50)
     parser.add_argument("-log_every", type=int, default=50)
-    parser.add_argument("-patience", type=int, default=4)
+    parser.add_argument("-patience", type=int, default=6)
     parser.add_argument("-checkpoint", type=str, default=None, help="The directory of save model.")
 
     # model parameters
     parser.add_argument("-update_rule", type=str, default="adam")
     parser.add_argument("-learning_rate", type=float, default=1e-4)
-    parser.add_argument("-n_epochs", type=int, default=1000)
+    parser.add_argument("-n_epochs", type=int, default=2000)
     parser.add_argument("-sentRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-wordRNN_lstm_dim", type=int, default=512)
     parser.add_argument("-num_boxes", type=int, default=50)
-    parser.add_argument("-feats_dim", type=int, default=128)
+    parser.add_argument("-gcv_feats_dim", type=int, default=128)
     parser.add_argument("-attention_dim", type=int, default=4096)
     parser.add_argument("-project_dim", type=int, default=1024)
     parser.add_argument('-word_lstm_layer', type=int, default=1,
@@ -65,6 +67,7 @@ def load_args():
 
     parser.add_argument('-max_n_objs', type=int, default=30)
     parser.add_argument('-max_n_rels', type=int, default=150)
+    parser.add_argument("-n_obj", dest='n_obj', type=int)
 
     parser.add_argument("-batch_size", type=int, default=128)
     parser.add_argument("-test_batch_size", type=int, default=256)
@@ -80,6 +83,10 @@ def load_args():
     
     if args.mode == "infer" and not args.model_name:
         parser.error('model is not given')
+
+    if args.n_obj == None:
+        parser.error('n_obj is not given')
+
 
     return args
 
@@ -128,7 +135,7 @@ class DataContainer():
 def main():
     
     args = load_args()
-    args.path = PathConfig()
+    args.path = PathConfig(args.n_obj)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
@@ -142,7 +149,8 @@ def main():
                                   max_n_objs=args.max_n_objs,
                                   max_n_rels=args.max_n_rels,
                                   embedding_dim=args.embedding_dim,
-                                  feats_dim=args.feats_dim)
+                                  feats_dim=args.gcv_feats_dim,
+                                  n_objs=args.n_obj)
 
 
     solver = ParagraphSolver(model, dc, args)
