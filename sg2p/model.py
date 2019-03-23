@@ -236,7 +236,7 @@ class Regions_Hierarchical():
                                      project_dim,
                                      feats_dim,
                                      topic_dim,
-                                     max_n_objs)
+                                     max_n_objs+max_n_rels)
 
 
 
@@ -380,7 +380,10 @@ class Regions_Hierarchical():
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         print obj_vecs
-        features = obj_vecs
+        print tf.concat([obj_vecs, pred_vecs], axis=1)
+        # raw_input()
+        # features = obj_vecs
+        features = tf.concat([obj_vecs, pred_vecs], axis=1)
 
         # raw_input()
         # mask objs by 282
@@ -487,7 +490,9 @@ class Regions_Hierarchical():
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
         print obj_vecs
-        features = obj_vecs
+
+        # features = obj_vecs
+        features = tf.concat([obj_vecs, pred_vecs], axis=1)
         
 
         # save the generated paragraph to list, here I named generated_sents
