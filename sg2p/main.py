@@ -9,8 +9,6 @@ from path_config import PathConfig
 from util import *
 import os
 
-tf.set_random_seed(123)
-
 # ex: python main.py -m train -p test 
 # ex: python main.py -m train -p test -gpu 1
 
@@ -21,6 +19,7 @@ def load_args():
     parser.add_argument('-no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
+    parser.add_argument("-use_attrs", action='store_true', default=False)
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -67,6 +66,7 @@ def load_args():
 
     parser.add_argument('-max_n_objs', type=int, default=30)
     parser.add_argument('-max_n_rels', type=int, default=150)
+    parser.add_argument('-max_n_attrs', type=int, default=3)
     parser.add_argument("-n_obj", dest='n_obj', type=int)
 
     parser.add_argument("-batch_size", type=int, default=128)
@@ -150,6 +150,7 @@ def main():
                                   max_n_rels=args.max_n_rels,
                                   embedding_dim=args.embedding_dim,
                                   feats_dim=args.gcv_feats_dim,
+                                  use_attrs=args.use_attrs,
                                   n_objs=args.n_obj)
 
 

@@ -186,7 +186,9 @@ class Regions_Hierarchical():
                        n_objs,
                        max_n_objs,
                        max_n_rels,
+                       use_attrs,
                        n_preds=50,
+                       n_attrs=400,
                        embedding_dim=100,
                        # pred_embed_dim=32,
                        # obj_embed_dim=100,
@@ -220,6 +222,7 @@ class Regions_Hierarchical():
             self.embed_dim = pretrained_embed_matrix.shape[1]
             self.max_n_objs = max_n_objs
             self.max_n_rels = max_n_rels
+            self.use_attrs = use_attrs
             topic_dim = wordRNN_lstm_dim * 2
 
             self.w_init = WeightInit()
@@ -289,10 +292,10 @@ class Regions_Hierarchical():
             self.num_distribution = tf.placeholder(tf.int32, [batch_size, self.S_max])
 
             # receive the ground truth words, which has been changed to idx use word2idx function
-            self.captions = tf.placeholder(tf.int32, [batch_size, self.S_max, self.N_max+1])
+            self.captions = tf.placeholder(tf.int32, [None, self.S_max, self.N_max+1])
             self.objs = tf.placeholder(tf.int32, [None, max_n_objs+1])
-            # self.objs_idx = tf.placeholder(tf.int32, [batch_size, 30])
             self.triples = tf.placeholder(tf.int32, [None, max_n_rels, 3])
+            self.attrs = tf.placeholder(tf.int32, [None, max_n_objs+1, 3]) # align with objs
 
             # self.caption_labels = tf.placeholder(tf.int32, [None, self.S_max, self.label_size])
 
@@ -316,12 +319,18 @@ class Regions_Hierarchical():
                                         [n_preds, embedding_dim],
                                         initializer=self.w_init.random_uniform)
 
+            self.attr_embeddings = tf.get_variable("attr_embeddings",
+                                        # n_objs+1 for padding 
+                                        [n_attrs+1, embedding_dim],
+                                        initializer=self.w_init.random_uniform)
+
             gconv_kwargs = {
                 'input_dim': embedding_dim,
                 'output_dim': feats_dim,
                 'hidden_dim': gconv_hidden_dim,
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
+                'use_attrs': use_attrs,
               }
             self.gconv = GraphTripleConv(**gconv_kwargs)
 
@@ -353,9 +362,10 @@ class Regions_Hierarchical():
 
         # features = self.densecap_feats # (50, 4096)  
         objs = self.objs
-        # objs_idx = self.objs_idx
         triples = self.triples  
+        attrs = self.attrs 
         captions = self.captions
+        batch_size = tf.shape(objs)[0]
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
@@ -364,20 +374,23 @@ class Regions_Hierarchical():
         # tf.split(triples, [2, 1], axis=2)
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
 
-
-        # print edges
-        # print p
-        # raw_input()
-
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
-        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p) 
+        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p)
 
-        # print obj_vecs
-        # print pred_vecs
+        if self.use_attrs:
+            attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
+            # build attrs_mask
+            padding_attr = 400
+            attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
+
+            # graph convolution 
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+        else:
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
+
 
         print obj_vecs
         features = obj_vecs
@@ -468,23 +481,37 @@ class Regions_Hierarchical():
     
     def build_sampler(self, reuse):
 
-        # features = self.densecap_feats # (50, 4096)
-
+        # features = self.densecap_feats # (50, 4096)  
         objs = self.objs
-        # objs_idx = self.objs_idx
         triples = self.triples  
+        attrs = self.attrs 
+        captions = self.captions
+        batch_size = tf.shape(objs)[0]
 
+        captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
+        captions_length = tf.reduce_sum(captions_mask, 2)
+        sents_mask = tf.to_float(tf.not_equal(self.num_distribution, 0))
+
+        # tf.split(triples, [2, 1], axis=2)
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
-        
+
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
-        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p) 
+        pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p)
 
-        # print obj_vecs
-        # print pred_vecs
+        if self.use_attrs:
+            attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
 
-        obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges)
+            # build attrs_mask
+            padding_attr = 400
+            attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
+
+            # graph convolution 
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+        else:
+            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
+
 
         print obj_vecs
         features = obj_vecs

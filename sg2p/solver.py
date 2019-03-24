@@ -33,7 +33,8 @@ class ParagraphSolver(object):
         self.pretrained_model = self.args.model_name
         self.dc = dc
         self.fixed_n_sent = self.args.fixed_n_sent
-        
+        self.use_attrs = self.args.use_attrs
+
         self.n_epoch = self.args.n_epochs
         self.batch_size = self.args.batch_size
         self.test_batch_size = self.args.test_batch_size
@@ -135,6 +136,9 @@ class ParagraphSolver(object):
                  self.model.captions: batch_data["captions"],
             }
 
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
+
             
             _, _loss, _loss_sent, _loss_word = self.sess.run(
                 [train_op, 
@@ -208,6 +212,10 @@ class ParagraphSolver(object):
                     self.model.objs: batch_data["objs"],
                     self.model.triples: batch_data["triples"],
                 }
+
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
+            
 
             # print batch_data["objs"][0].shape
             # print batch_data["triples"][0].shape
