@@ -3,29 +3,50 @@ import random
 import os
 import pickle
 import json
-# import hickle
+import hickle
 import h5py
 import math
 # from util import load_paragraph
 
 class TrainingData():
-    def __init__(self, args, classes_1600to282):
+    def __init__(self, args, classes_1600to282, use_box_feats, mode):
         
+        assert mode in ['train', 'sample']
+
         self.batch_size = args.batch_size
-        self.train_sg_path = args.path.train_sg_path
+
+        if mode == 'train':
+            self.sg_path = args.path.train_sg_path
+        if mode == 'sample':
+            self.sg_path = args.path.sample_sg_path
+        
         self.max_n_objs = args.max_n_objs
         self.max_n_rels = args.max_n_rels
+        self.use_box_feats = use_box_feats
+        
+        if mode == 'train':
+            self.box_feats_path = args.path.train_box_feats_path
+        if mode == 'sample':
+            self.box_feats_path = args.path.sample_box_feats_path
 
-        # self.train_feats_path = args.path.train_feats_path
-        self.img_ids_path = args.path.train_imgs_ids_path
+        
+        if mode == 'train':
+            self.img_ids_path = args.path.train_imgs_ids_path
+        if mode == 'sample':
+            self.img_ids_path = args.path.sample_imgs_ids_path
+
+        
         self.img2paragraph_path = args.path.img2paragraph_path
 
         self.num_distribution, self.captions = self.load_data()
 
-        self.objs, self.triples, self.n_objs = self.load_graphs(self.train_sg_path, 
+        self.objs, self.triples, self.n_objs = self.load_graphs(self.sg_path, 
                                                                 classes_1600to282, 
                                                                 self.max_n_objs, 
                                                                 self.max_n_rels)
+        
+        if use_box_feats:
+            self.box_feats = hickle.load(self.box_feats_path)
 
         keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=10 and n_obj<=self.max_n_objs]
 
@@ -34,6 +55,10 @@ class TrainingData():
         self.captions = self.captions[keep_entry]
         self.objs = self.objs[keep_entry]
         self.triples = self.triples[keep_entry]
+
+        if use_box_feats:
+            self.box_feats = self.box_feats[keep_entry]
+
 
         self.size = len(self.captions)
 
@@ -130,6 +155,7 @@ class TrainingData():
                 "triples" : self.triples[self.pointer: self.pointer+self.batch_size],
                 "num_distribution": self.num_distribution[self.pointer: self.pointer+self.batch_size],
                 "captions": self.captions[self.pointer: self.pointer+self.batch_size],
+                'box_feats': self.box_feats[self.pointer: self.pointer+self.batch_size],
             }
 
         self.pointer = self.pointer + self.batch_size
@@ -150,7 +176,7 @@ class TrainingData():
         self.triples = self.triples[s]
         self.num_distribution = self.num_distribution[s]
         self.captions = self.captions[s]
-        
+        self.box_feats = self.box_feats[s]
 
 
 class ValidateData():
@@ -186,13 +212,14 @@ class ValidateData():
         self.pointer = 0
 
 class TestData():
-    def __init__(self, args, classes_1600to282):
+    def __init__(self, args, classes_1600to282, use_box_feats):
         
         self.batch_size = args.test_batch_size
         self.test_feats_path = args.path.test_feats_path
         self.test_sg_path = args.path.test_sg_path
         self.max_n_objs = args.max_n_objs
         self.max_n_rels = args.max_n_rels
+        self.box_feats_path = args.path.test_box_feats_path
 
 
         # self.densecap_feats = self.load_data()
@@ -200,6 +227,10 @@ class TestData():
                                                                 classes_1600to282, 
                                                                 self.max_n_objs, 
                                                                 self.max_n_rels)
+
+
+        if use_box_feats:
+            self.box_feats = hickle.load(self.box_feats_path)
 
 
         self.size = len(self.triples)
@@ -281,6 +312,7 @@ class TestData():
         batch_data = {
                 "objs" : self.objs[self.pointer: self.pointer+self.batch_size],
                 "triples" : self.triples[self.pointer: self.pointer+self.batch_size],
+                "box_feats" : self.box_feats[self.pointer: self.pointer+self.batch_size],
             }
 
         self.pointer = self.pointer + self.batch_size

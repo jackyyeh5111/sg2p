@@ -183,11 +183,13 @@ class Regions_Hierarchical():
                        sentRNN_lstm_dim,
                        wordRNN_lstm_dim,
                        feats_dim, # =gconv_dim
+                       use_box_feats,
                        n_objs,
                        max_n_objs,
                        max_n_rels,
                        n_preds=50,
                        embedding_dim=100,
+                       box_feats_dim=2048,
                        # pred_embed_dim=32,
                        # obj_embed_dim=100,
                        # gconv_dim=128,
@@ -220,24 +222,34 @@ class Regions_Hierarchical():
             self.embed_dim = pretrained_embed_matrix.shape[1]
             self.max_n_objs = max_n_objs
             self.max_n_rels = max_n_rels
+            self.use_box_feats = use_box_feats
             topic_dim = wordRNN_lstm_dim * 2
 
             self.w_init = WeightInit()
 
             self.H = sentRNN_lstm_dim
             self.L = num_boxes
-            self.D = feats_dim
+
+            if self.use_box_feats:
+                self.D = feats_dim + box_feats_dim
+            else:
+                self.D = feats_dim
+            
+
             self.ctx2out = ctx2out
             self.alpha_c = alpha_c
 
-            self.sentRNN = SentRNN(  sentRNN_lstm_dim,
-                                     sentRNN_numlayer,
-                                     wordRNN_lstm_dim,
-                                     project_dim,
-                                     feats_dim,
-                                     topic_dim,
-                                     max_n_objs+max_n_rels)
 
+            self.sentRNN = SentRNN(  sentRNN_lstm_dim,
+                                         sentRNN_numlayer,
+                                         wordRNN_lstm_dim,
+                                         project_dim,
+                                         self.D,
+                                         topic_dim,
+                                         num_boxes= max_n_objs if use_box_feats else max_n_objs+max_n_rels)
+
+
+            
 
 
             self.sentRNN_lstm_dim = sentRNN_lstm_dim 
@@ -282,7 +294,8 @@ class Regions_Hierarchical():
 
 
             # placeholder
-            self.densecap_feats = tf.placeholder(tf.float32, [batch_size, self.num_boxes, self.feats_dim])
+            # self.densecap_feats = tf.placeholder(tf.float32, [batch_size, self.num_boxes, self.feats_dim])
+            self.box_feats = tf.placeholder(tf.float32, [None, max_n_objs, box_feats_dim])
 
             # receive the [continue:0, stop:1] lists
             # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
@@ -356,6 +369,7 @@ class Regions_Hierarchical():
         # objs_idx = self.objs_idx
         triples = self.triples  
         captions = self.captions
+        box_feats = self.box_feats
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
@@ -379,11 +393,18 @@ class Regions_Hierarchical():
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
+        if self.use_box_feats:
+            features = tf.concat([obj_vecs, box_feats], axis=2)
+        else:
+            features = obj_vecs
+
         print obj_vecs
         print tf.concat([obj_vecs, pred_vecs], axis=1)
         # raw_input()
         # features = obj_vecs
-        features = tf.concat([obj_vecs, pred_vecs], axis=1)
+        print features
+        
+        # features = tf.concat([obj_vecs, pred_vecs], axis=1)
 
         # raw_input()
         # mask objs by 282
@@ -474,8 +495,8 @@ class Regions_Hierarchical():
         # features = self.densecap_feats # (50, 4096)
 
         objs = self.objs
-        # objs_idx = self.objs_idx
         triples = self.triples  
+        box_feats = self.box_feats
 
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
         
@@ -489,10 +510,15 @@ class Regions_Hierarchical():
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
+        if self.use_box_feats:
+            features = tf.concat([obj_vecs, box_feats], axis=2)
+        else:
+            features = obj_vecs
+
         print obj_vecs
 
         # features = obj_vecs
-        features = tf.concat([obj_vecs, pred_vecs], axis=1)
+        # features = tf.concat([obj_vecs, pred_vecs], axis=1)
         
 
         # save the generated paragraph to list, here I named generated_sents

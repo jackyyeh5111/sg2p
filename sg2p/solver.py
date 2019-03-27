@@ -37,6 +37,8 @@ class ParagraphSolver(object):
         self.n_epoch = self.args.n_epochs
         self.batch_size = self.args.batch_size
         self.test_batch_size = self.args.test_batch_size
+        self.use_box_feats = self.args.use_box_feats
+
         self.learning_rate = self.args.learning_rate
         self.log_path = os.path.join(self.args.path.log_dir, self.process_name) 
         self.model_path = os.path.join(self.args.path.model_dir, self.process_name)
@@ -135,6 +137,9 @@ class ParagraphSolver(object):
                  self.model.captions: batch_data["captions"],
             }
 
+            if self.use_box_feats:
+                feed_dict[self.model.box_feats] = batch_data["box_feats"]
+            
             
             _, _loss, _loss_sent, _loss_word = self.sess.run(
                 [train_op, 
@@ -208,6 +213,10 @@ class ParagraphSolver(object):
                     self.model.objs: batch_data["objs"],
                     self.model.triples: batch_data["triples"],
                 }
+
+            if self.use_box_feats:
+                feed_dict[self.model.box_feats] = batch_data["box_feats"]
+            
 
             # print batch_data["objs"][0].shape
             # print batch_data["triples"][0].shape

@@ -9,8 +9,6 @@ from path_config import PathConfig
 from util import *
 import os
 
-tf.set_random_seed(123)
-
 # ex: python main.py -m train -p test 
 # ex: python main.py -m train -p test -gpu 1
 
@@ -21,6 +19,7 @@ def load_args():
     parser.add_argument('-no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
+    parser.add_argument("-use_box_feats", action='store_true', default=False)
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -56,6 +55,7 @@ def load_args():
     parser.add_argument('-topic_dim', type=int, default=1024,
                         help='the size for topic vector')
     parser.add_argument('-embedding_dim', type=int, default=100)
+    parser.add_argument('-box_feats_dim', type=int, default=2048)
     
     parser.add_argument('-pooling_dim', type=int, default=1024,
                         help='the size for pooling vector')
@@ -124,9 +124,10 @@ class DataContainer():
 
         if args.mode == "train":
             # pass
-          self.train_data = TrainingData(args, self.classes_1600to282)
+          self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='train')
 
-          self.val_data = TestData(args, self.classes_1600to282)
+          # self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='sample')
+          self.val_data = TestData(args, self.classes_1600to282, self.args.use_box_feats)
 
         elif args.mode == "infer":
           self.test_data = TestData(batch_size=args.test_batch_size)
@@ -150,6 +151,8 @@ def main():
                                   max_n_rels=args.max_n_rels,
                                   embedding_dim=args.embedding_dim,
                                   feats_dim=args.gcv_feats_dim,
+                                  use_box_feats=args.use_box_feats,
+                                  box_feats_dim=args.box_feats_dim if args.use_box_feats else 0,
                                   n_objs=args.n_obj)
 
 
