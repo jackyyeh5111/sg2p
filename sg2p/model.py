@@ -241,12 +241,12 @@ class Regions_Hierarchical():
 
 
             self.sentRNN = SentRNN(  sentRNN_lstm_dim,
-                                         sentRNN_numlayer,
-                                         wordRNN_lstm_dim,
-                                         project_dim,
-                                         self.D,
-                                         topic_dim,
-                                         num_boxes= max_n_objs if use_box_feats else max_n_objs+max_n_rels)
+                                     sentRNN_numlayer,
+                                     wordRNN_lstm_dim,
+                                     project_dim,
+                                     self.D,
+                                     topic_dim,
+                                     num_boxes= max_n_objs if use_box_feats else max_n_objs+max_n_rels)
 
 
             

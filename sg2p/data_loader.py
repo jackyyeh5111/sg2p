@@ -8,15 +8,33 @@ import h5py
 import math
 # from util import load_paragraph
 
+def combineData(train_data, val_data, use_box_feats):
+
+    train_data.objs = np.concatenate((train_data.objs, val_data.objs), axis=0)
+    train_data.triples = np.concatenate((train_data.triples, val_data.triples), axis=0)
+    train_data.num_distribution = np.concatenate((train_data.num_distribution, val_data.num_distribution), axis=0)
+    train_data.captions = np.concatenate((train_data.captions, val_data.captions), axis=0)
+    
+    if use_box_feats:
+        train_data.box_feats = np.concatenate((train_data.box_feats, val_data.box_feats), axis=0)
+
+
+    train_data.size = len(train_data.captions)
+
+    train_data.num_batch = int(train_data.size / train_data.batch_size)    
+
+
 class TrainingData():
     def __init__(self, args, classes_1600to282, use_box_feats, mode):
         
-        assert mode in ['train', 'sample']
+        assert mode in ['train', 'val', 'sample']
 
         self.batch_size = args.batch_size
 
         if mode == 'train':
             self.sg_path = args.path.train_sg_path
+        if mode == 'val':
+            self.sg_path = args.path.val_sg_path
         if mode == 'sample':
             self.sg_path = args.path.sample_sg_path
         
@@ -26,12 +44,16 @@ class TrainingData():
         
         if mode == 'train':
             self.box_feats_path = args.path.train_box_feats_path
+        if mode == 'val':
+            self.box_feats_path = args.path.val_box_feats_path
         if mode == 'sample':
             self.box_feats_path = args.path.sample_box_feats_path
 
         
         if mode == 'train':
             self.img_ids_path = args.path.train_imgs_ids_path
+        if mode == 'val':
+            self.img_ids_path = args.path.val_imgs_ids_path
         if mode == 'sample':
             self.img_ids_path = args.path.sample_imgs_ids_path
 
@@ -155,8 +177,10 @@ class TrainingData():
                 "triples" : self.triples[self.pointer: self.pointer+self.batch_size],
                 "num_distribution": self.num_distribution[self.pointer: self.pointer+self.batch_size],
                 "captions": self.captions[self.pointer: self.pointer+self.batch_size],
-                'box_feats': self.box_feats[self.pointer: self.pointer+self.batch_size],
             }
+
+        if self.use_box_feats:
+            batch_data['box_feats'] = self.box_feats[self.pointer: self.pointer+self.batch_size]
 
         self.pointer = self.pointer + self.batch_size
 
@@ -176,7 +200,9 @@ class TrainingData():
         self.triples = self.triples[s]
         self.num_distribution = self.num_distribution[s]
         self.captions = self.captions[s]
-        self.box_feats = self.box_feats[s]
+
+        if self.use_box_feats:
+            self.box_feats = self.box_feats[s]
 
 
 class ValidateData():

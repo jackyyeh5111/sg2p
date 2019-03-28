@@ -2,7 +2,7 @@ import argparse
 import tensorflow as tf
 from model import Regions_Hierarchical
 import json
-from data_loader import TrainingData, ValidateData, TestData
+from data_loader import TrainingData, ValidateData, TestData, combineData
 from solver import ParagraphSolver
 import numpy as np
 from path_config import PathConfig
@@ -125,6 +125,9 @@ class DataContainer():
         if args.mode == "train":
             # pass
           self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='train')
+
+          self.val_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='val')
+          combineData(self.train_data, self.val_data, self.args.use_box_feats)
 
           # self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='sample')
           self.val_data = TestData(args, self.classes_1600to282, self.args.use_box_feats)
