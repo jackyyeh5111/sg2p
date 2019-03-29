@@ -8,7 +8,7 @@ import h5py
 import math
 # from util import load_paragraph
 
-def combineData(train_data, val_data, use_box_feats):
+def combineData(train_data, val_data, use_box_feats, use_attrs):
 
     train_data.objs = np.concatenate((train_data.objs, val_data.objs), axis=0)
     train_data.triples = np.concatenate((train_data.triples, val_data.triples), axis=0)
@@ -18,6 +18,8 @@ def combineData(train_data, val_data, use_box_feats):
     if use_box_feats:
         train_data.box_feats = np.concatenate((train_data.box_feats, val_data.box_feats), axis=0)
 
+    if use_attrs:
+        train_data.attrs = np.concatenate((train_data.attrs, val_data.attrs), axis=0)
 
     train_data.size = len(train_data.captions)
 
@@ -25,36 +27,28 @@ def combineData(train_data, val_data, use_box_feats):
 
 
 class TrainingData():
-    def __init__(self, args, classes_1600to282, use_box_feats, mode):
+    def __init__(self, args, classes_1600to282, mode):
         
         assert mode in ['train', 'val', 'sample']
 
         self.batch_size = args.batch_size
-
-        if mode == 'train':
-            self.sg_path = args.path.train_sg_path
-        if mode == 'val':
-            self.sg_path = args.path.val_sg_path
-        if mode == 'sample':
-            self.sg_path = args.path.sample_sg_path
-        
         self.max_n_objs = args.max_n_objs
         self.max_n_rels = args.max_n_rels
-        self.use_box_feats = use_box_feats
+        self.use_box_feats = args.use_box_feats
+        self.use_attrs = args.use_attrs
+        self.max_n_attrs = args.max_n_attrs
         
         if mode == 'train':
+            self.sg_path = args.path.train_sg_path
             self.box_feats_path = args.path.train_box_feats_path
-        if mode == 'val':
-            self.box_feats_path = args.path.val_box_feats_path
-        if mode == 'sample':
-            self.box_feats_path = args.path.sample_box_feats_path
-
-        
-        if mode == 'train':
             self.img_ids_path = args.path.train_imgs_ids_path
         if mode == 'val':
+            self.sg_path = args.path.val_sg_path
+            self.box_feats_path = args.path.val_box_feats_path
             self.img_ids_path = args.path.val_imgs_ids_path
         if mode == 'sample':
+            self.sg_path = args.path.sample_sg_path
+            self.box_feats_path = args.path.sample_box_feats_path
             self.img_ids_path = args.path.sample_imgs_ids_path
 
         
@@ -62,12 +56,14 @@ class TrainingData():
 
         self.num_distribution, self.captions = self.load_data()
 
-        self.objs, self.triples, self.n_objs = self.load_graphs(self.sg_path, 
+
+        self.objs, self.triples, self.n_objs, self.attrs = self.load_graphs(self.sg_path, 
                                                                 classes_1600to282, 
                                                                 self.max_n_objs, 
-                                                                self.max_n_rels)
+                                                                self.max_n_rels,
+                                                                self.max_n_attrs)
         
-        if use_box_feats:
+        if self.use_box_feats:
             self.box_feats = hickle.load(self.box_feats_path)
 
         keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=10 and n_obj<=self.max_n_objs]
@@ -78,16 +74,17 @@ class TrainingData():
         self.objs = self.objs[keep_entry]
         self.triples = self.triples[keep_entry]
 
-        if use_box_feats:
+        if self.use_box_feats:
             self.box_feats = self.box_feats[keep_entry]
-
+        if self.use_attrs:
+            self.attrs = self.attrs[keep_entry]
 
         self.size = len(self.captions)
 
         self.num_batch = int(self.size / self.batch_size)
         self.pointer = 0
         
-    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels):
+    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels, max_n_attrs, attr_thres=0.08):
         '''
         entries: list of dictionary
         entries[i]['labels']: shape of (O, )
@@ -108,17 +105,22 @@ class TrainingData():
         assert len(entries) == len(self.captions)
 
         objs = []
-        # objs_idx = []
+        attrs = []
         n_objs = []
         triples = []
         obj_count = {}
 
         n = []
         padding = 0
+        padding_attr = 400
         for i, entry in enumerate(entries):
             # i_objs_idx = list(entry['labels'])
             i_objs = [classes_1600to282[obj] for obj in entry['labels']]
             i_triples = entry['rels']
+            i_triples = entry['rels']
+            i_attr = entry['attrs']
+            i_attrs_conf = entry['attrs_conf']
+
 
             obj_count[len(i_objs)] = obj_count.get(len(i_objs), 0) + 1
             
@@ -136,17 +138,26 @@ class TrainingData():
             else:
                 i_triples = i_triples[:max_n_rels] 
 
+            # attrs
+            attr_pad_idx = np.where(i_attrs_conf > attr_thres)
+            i_attr[attr_pad_idx] = padding_attr
+
+            # shape of attr have to align with shape of objs 
+            if len(i_attr) < self.max_n_objs:
+                np_pad_attr = np.full((self.max_n_objs + 1 - len(i_attr), self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+            else:
+                i_attr = i_attr[:self.max_n_objs] 
+                np_pad_attr = np.full((1, self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+
+
             objs.append(i_objs)
-            # objs_idx.append(i_objs_idx)
             triples.append(i_triples)
             n_objs.append(len(entry['labels']))
+            attrs.append(i_attr)
 
-            # print i_triples
-            # print len(i_objs)
-            # print len(i_triples)
-            # raw_input()
-
-        return np.array(objs), np.array(triples), n_objs
+        return np.array(objs), np.array(triples), n_objs, np.array(attrs)
 
 
     def load_data(self):
@@ -182,6 +193,9 @@ class TrainingData():
         if self.use_box_feats:
             batch_data['box_feats'] = self.box_feats[self.pointer: self.pointer+self.batch_size]
 
+        if self.use_attrs:
+            batch_data['attrs'] = self.attrs[self.pointer: self.pointer+self.batch_size]
+
         self.pointer = self.pointer + self.batch_size
 
         return batch_data
@@ -203,42 +217,11 @@ class TrainingData():
 
         if self.use_box_feats:
             self.box_feats = self.box_feats[s]
-
-
-class ValidateData():
-    def __init__(self, args):
-        
-        self.batch_size = args.test_batch_size
-        self.val_feats_path = args.path.val_feats_path 
-
-        self.densecap_feats = self.load_data()
-        self.size = len(self.densecap_feats)
-        self.num_batch = int( math.ceil( self.size / float(self.batch_size)) )
-        
-        self.pointer = 0
-
-    def load_data(self):
-        
-        h5_data = h5py.File(self.val_feats_path, 'r')
-        feats = h5_data.get('feats')
-        densecap_feats = np.asarray( [feat for feat in feats] )
-       
-        return densecap_feats
-
-    def next_batch(self):
-        batch_data = {
-                "densecap_feats" : self.densecap_feats[self.pointer: self.pointer+self.batch_size],
-            }
-
-        self.pointer = self.pointer + self.batch_size
-
-        return batch_data
-
-    def reset_pointer(self):
-        self.pointer = 0
+        if self.use_attrs:
+            self.attrs = self.attrs[s]
 
 class TestData():
-    def __init__(self, args, classes_1600to282, use_box_feats):
+    def __init__(self, args, classes_1600to282):
         
         self.batch_size = args.test_batch_size
         self.test_feats_path = args.path.test_feats_path
@@ -246,16 +229,20 @@ class TestData():
         self.max_n_objs = args.max_n_objs
         self.max_n_rels = args.max_n_rels
         self.box_feats_path = args.path.test_box_feats_path
+        self.max_n_attrs = args.max_n_attrs
+        self.use_box_feats = args.use_box_feats
+        self.use_attrs = args.use_attrs
 
 
         # self.densecap_feats = self.load_data()
-        self.objs, self.triples, self.n_objs = self.load_graphs(self.test_sg_path, 
+        self.objs, self.triples, self.n_objs, self.attrs = self.load_graphs(self.test_sg_path, 
                                                                 classes_1600to282, 
                                                                 self.max_n_objs, 
-                                                                self.max_n_rels)
+                                                                self.max_n_rels,
+                                                                self.max_n_rels,
+                                                                self.max_n_attrs)
 
-
-        if use_box_feats:
+        if self.use_box_feats:
             self.box_feats = hickle.load(self.box_feats_path)
 
 
@@ -264,7 +251,7 @@ class TestData():
         
         self.pointer = 0
 
-    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels):
+    def load_graphs(self, sg_path, classes_1600to282, max_n_objs, max_n_rels, max_n_attrs, attr_thres=0.08):
         '''
         entries: list of dictionary
         entries[i]['labels']: shape of (O, )
@@ -282,19 +269,23 @@ class TestData():
         with open(sg_path, 'r') as f:
             entries = pickle.load(f)
 
-
         objs = []
-        # objs_idx = []
+        attrs = []
         n_objs = []
         triples = []
         obj_count = {}
 
         n = []
         padding = 0
+        padding_attr = 400
         for i, entry in enumerate(entries):
             # i_objs_idx = list(entry['labels'])
             i_objs = [classes_1600to282[obj] for obj in entry['labels']]
             i_triples = entry['rels']
+            i_triples = entry['rels']
+            i_attr = entry['attrs']
+            i_attrs_conf = entry['attrs_conf']
+
 
             obj_count[len(i_objs)] = obj_count.get(len(i_objs), 0) + 1
             
@@ -302,8 +293,8 @@ class TestData():
                 # i_objs_idx += [-1] * (max_n_objs-len(i_objs)) # included in triples, no need to feed into model
                 i_objs += [padding] * (max_n_objs + 1 - len(i_objs)) # padding, 282 is padding idx for objs
             else:
-                i_objs = i_objs[:max_n_objs] 
-                i_objs = i_objs + [padding] # 31st idx is padding
+                i_objs = i_objs[:max_n_objs] + [padding] # 31st idx is padding
+
 
             if len(i_triples) < max_n_rels:
                 pad_triples = np.zeros((max_n_rels-len(i_triples), 3))
@@ -312,17 +303,26 @@ class TestData():
             else:
                 i_triples = i_triples[:max_n_rels] 
 
+            # attrs
+            attr_pad_idx = np.where(i_attrs_conf > attr_thres)
+            i_attr[attr_pad_idx] = padding_attr
+
+            # shape of attr have to align with shape of objs 
+            if len(i_attr) < self.max_n_objs:
+                np_pad_attr = np.full((self.max_n_objs + 1 - len(i_attr), self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+            else:
+                i_attr = i_attr[:self.max_n_objs] 
+                np_pad_attr = np.full((1, self.max_n_attrs), padding_attr) 
+                i_attr = np.concatenate((i_attr, np_pad_attr), axis=0)
+
+
             objs.append(i_objs)
-            # objs_idx.append(i_objs_idx)
             triples.append(i_triples)
             n_objs.append(len(entry['labels']))
+            attrs.append(i_attr)
 
-            # print i_triples
-            # print len(i_objs)
-            # print len(i_triples)
-            # raw_input()
-
-        return np.array(objs), np.array(triples), n_objs
+        return np.array(objs), np.array(triples), n_objs, np.array(attrs)
 
 
     def load_data(self):
@@ -338,8 +338,13 @@ class TestData():
         batch_data = {
                 "objs" : self.objs[self.pointer: self.pointer+self.batch_size],
                 "triples" : self.triples[self.pointer: self.pointer+self.batch_size],
-                "box_feats" : self.box_feats[self.pointer: self.pointer+self.batch_size],
             }
+
+        if self.use_attrs:
+            batch_data['attrs'] = self.attrs[self.pointer: self.pointer+self.batch_size]
+
+        if self.use_box_feats:
+            batch_data['box_feats'] = self.box_feats[self.pointer: self.pointer+self.batch_size]
 
         self.pointer = self.pointer + self.batch_size
 

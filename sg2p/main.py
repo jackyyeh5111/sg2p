@@ -2,7 +2,7 @@ import argparse
 import tensorflow as tf
 from model import Regions_Hierarchical
 import json
-from data_loader import TrainingData, ValidateData, TestData, combineData
+from data_loader import TrainingData, TestData, combineData
 from solver import ParagraphSolver
 import numpy as np
 from path_config import PathConfig
@@ -20,6 +20,7 @@ def load_args():
                         help='disables CUDA training')
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
     parser.add_argument("-use_box_feats", action='store_true', default=False)
+    parser.add_argument("-use_attrs", action='store_true', default=False)
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -67,6 +68,7 @@ def load_args():
 
     parser.add_argument('-max_n_objs', type=int, default=30)
     parser.add_argument('-max_n_rels', type=int, default=150)
+    parser.add_argument('-max_n_attrs', type=int, default=3)
     parser.add_argument("-n_obj", dest='n_obj', type=int)
 
     parser.add_argument("-batch_size", type=int, default=128)
@@ -124,13 +126,12 @@ class DataContainer():
 
         if args.mode == "train":
             # pass
-          self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='train')
+          self.train_data = TrainingData(args, self.classes_1600to282, mode='train')
+          self.val_data = TrainingData(args, self.classes_1600to282, mode='val')
+          combineData(self.train_data, self.val_data, self.args.use_box_feats, self.args.use_attrs)
 
-          self.val_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='val')
-          combineData(self.train_data, self.val_data, self.args.use_box_feats)
-
-          # self.train_data = TrainingData(args, self.classes_1600to282, self.args.use_box_feats, mode='sample')
-          self.val_data = TestData(args, self.classes_1600to282, self.args.use_box_feats)
+          # self.train_data = TrainingData(args, self.classes_1600to282, mode='sample')
+          self.val_data = TestData(args, self.classes_1600to282)
 
         elif args.mode == "infer":
           self.test_data = TestData(batch_size=args.test_batch_size)
@@ -156,6 +157,7 @@ def main():
                                   feats_dim=args.gcv_feats_dim,
                                   use_box_feats=args.use_box_feats,
                                   box_feats_dim=args.box_feats_dim if args.use_box_feats else 0,
+                                  use_attrs=args.use_attrs,
                                   n_objs=args.n_obj)
 
 

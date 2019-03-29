@@ -33,7 +33,8 @@ class ParagraphSolver(object):
         self.pretrained_model = self.args.model_name
         self.dc = dc
         self.fixed_n_sent = self.args.fixed_n_sent
-        
+        self.use_attrs = self.args.use_attrs
+
         self.n_epoch = self.args.n_epochs
         self.batch_size = self.args.batch_size
         self.test_batch_size = self.args.test_batch_size
@@ -140,6 +141,9 @@ class ParagraphSolver(object):
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
             
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
+
             
             _, _loss, _loss_sent, _loss_word = self.sess.run(
                 [train_op, 
@@ -216,27 +220,10 @@ class ParagraphSolver(object):
 
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
-            
 
-            # print batch_data["objs"][0].shape
-            # print batch_data["triples"][0].shape
-            
-            # for objs in batch_data["objs"][:3]:
-            #     for obj in objs:
-            #         if obj == 0:
-            #             continue
-            #         print self.dc.classes_282[str(obj)],
+            if self.use_attrs:
+                feed_dict[self.model.attrs] = batch_data["attrs"]
 
-            #     print ''
-            
-            # for i in range(3):
-            #     for triple, obj in zip(batch_data['triples'][i], batch_data['objs'][i]):
-            #         s = triple[0]
-            #         o = triple[1]
-            #         p = triple[2]
-            #         print '%s %s %s' % (self.dc.classes_282[str(obj[s])], self.dc.idx2pred[str(p)], self.dc.classes_282[str(obj[o])])
-
-            # raw_input()
             
             _sampled_paragraphs, _pred = self.sess.run([sampled_paragraphs, pred_re], feed_dict)
             val_paragraphs = decode_paragraphs(_sampled_paragraphs, _pred, self.dc.idx2word, fixed_n_sent=self.fixed_n_sent)
