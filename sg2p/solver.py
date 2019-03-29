@@ -306,7 +306,9 @@ class ParagraphSolver(object):
                 if self.is_early_stop == True:
                     es_score = final_scores['METEOR'] + final_scores['CIDEr']
                     if self._early_stop(es_score, epoch) == True:
-                        print ('early stop in epoch[%d]!\nbest_score: %.2f' % (self.best_epoch, self.best_score))
+                        msg = ('early stop in epoch[%d]!\nbest_score: %.2f' % (self.best_epoch, self.best_score))
+                        print (msg)
+                        f_score.write(msg + '\n')
                         break
 
             if (epoch+1) % self.save_every == 0:
