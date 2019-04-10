@@ -56,7 +56,8 @@ def score(ref, ref_coref, hypo):
 def evaluate(get_scores=False, 
              reference_path="data/reference.txt", 
              reference_coref_path="data/reference_coref.txt", 
-             candidate_path="results/fd-512_att/val_candidate_500.txt"):
+             candidate_path="results/fd-512_att/val_candidate_500.txt",
+             repetition_penalty=False):
 
     # reference_path = os.path.join("data", reference_file)
     # candidate_path = os.path.join("results", "model-500")
@@ -107,6 +108,8 @@ def evaluate(get_scores=False,
                 ref_coref[i] += [sent]
 
 
+
+
     # print cand
     # print ref
     # raw_input()
@@ -115,6 +118,43 @@ def evaluate(get_scores=False,
     final_scores, all_scores = score(ref, ref_coref, cand)
     # final_scores = score(ref, ref_coref, cand)
     
+    if repetition_penalty:
+        n_repetitions = []
+        for i, caption in enumerate(raw_cand):
+            cand = {}
+            repetition = 0
+            caption = caption.strip().lower()
+            if caption != '':
+                captions = caption.split(' . ')
+                
+                for j, caption in enumerate(captions):
+                    try:
+                        if cand[caption]: # check caption whether is a key
+                            repetition += 1
+                    except:
+                        cand[caption] = True
+
+            n_repetitions.append(repetition)
+
+
+        # print n_repetitions[0]
+        # print raw_cand[0]
+
+        all_scores['SPICE'] = [s['All']['f'] for s in all_scores['SPICE']]
+
+        for i in range(len(all_scores['SPICE'])):
+            all_scores['SPICE'][i] = all_scores['SPICE'][i] - 0.015 * n_repetitions[i]
+
+        final_scores['SPICE'] = sum(all_scores['SPICE']) / len(all_scores['SPICE'])
+
+    # print all_scores['SPICE'][:5]
+    # all_scores['SPICE'] = [s['All']['f'] for s in all_scores['SPICE']]
+    # print sum(all_scores['SPICE']) / len(all_scores['SPICE'])
+    # print final_scores['SPICE']
+
+
+    # raw_input()
+
     if get_scores:
         return final_scores
 
@@ -127,7 +167,7 @@ def evaluate(get_scores=False,
         print 'METEOR:\t',final_scores['METEOR']  
         # print 'ROUGE_L:',final_scores['ROUGE_L']  
         print 'CIDEr:\t',final_scores['CIDEr']
-        print 'SPICE:\t',final_scores['SPICE']
+        print 'SPICE:\t', final_scores['SPICE']
         print 'SPICE_PRECISION:\t',final_scores['SPICE_PRECISION']
         print 'SPICE_RECALL:\t',final_scores['SPICE_RECALL']
 

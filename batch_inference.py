@@ -16,12 +16,19 @@ op.add_option("-e", dest="end", type=int, default=100000 )
 op.add_option("--fixed_n_sent",
                   dest="fixed_n_sent", action="store_true", default=False, 
                   help="generate fixed number(S_max) of sent of a paragraph while inferencing")
+
+op.add_option("--rp", dest="repetition_penalty", action="store_true", default=False)
     
 (opts, args) = op.parse_args()
 if not opts.process_name:  op.error('process_name is not given')
 
 results_path = os.path.join(os.getcwd(), 'results', opts.process_name) # lily
-candidate_paths = glob.glob(results_path + "/val_candidate*")
+# candidate_paths = glob.glob(results_path + "/val_candidate*")
+
+candidate_paths = []
+for path in glob.glob(results_path + "/val_candidate*"):
+  if 'coref' not in path:
+    candidate_paths.append(path)
 
 
 # epochs = []
@@ -47,14 +54,18 @@ candidate_paths = sorted(candidate_paths, key=lambda c_path: int(c_path.strip('.
 #         print (msg)   
 
 
-o_path = os.path.join(results_path, 'new_score.txt')
+if opts.repetition_penalty:
+  o_path = os.path.join(results_path, 'new_score_rpenalty1.5.txt')
+else:
+  o_path = os.path.join(results_path, 'new_score.txt')
+
 with open(o_path, 'w', buffering=0) as f_score:
     for c_path in candidate_paths:
         epoch = int(c_path.strip('.txt').split('_')[-1])
 
         if epoch >= opts.start and epoch <= opts.end:
 
-            final_scores = evaluate(get_scores=True, candidate_path=c_path)
+            final_scores = evaluate(get_scores=True, candidate_path=c_path, repetition_penalty=opts.repetition_penalty)
             
             msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f, SPICE: %f, PRECISION: %f, RECALL: %f" 
                     % (epoch, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
