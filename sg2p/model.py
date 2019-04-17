@@ -231,7 +231,7 @@ class Regions_Hierarchical():
 
             self.w_init = WeightInit()
 
-            self.H = sentRNN_lstm_dim
+            self.H = wordRNN_lstm_dim
             self.L = num_boxes
 
             if self.use_box_feats:
@@ -250,7 +250,7 @@ class Regions_Hierarchical():
                                      project_dim,
                                      self.D,
                                      topic_dim,
-                                     num_boxes= max_n_objs if use_box_feats else max_n_objs+max_n_rels)
+                                     num_boxes= max_n_objs)
 
 
             
