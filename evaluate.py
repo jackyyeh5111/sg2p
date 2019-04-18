@@ -11,7 +11,7 @@ from pycocoevalcap.cider.cider import Cider
 from pycocoevalcap.meteor.meteor import Meteor
 from pycocoevalcap.spice.spice import Spice
 
-def score(ref, ref_coref, hypo):
+def score(ref, ref_coref, hypo, cand_coref):
 
     scorers = [
         (Bleu(4),["Bleu_1","Bleu_2","Bleu_3","Bleu_4"]),
@@ -26,7 +26,7 @@ def score(ref, ref_coref, hypo):
     for scorer,method in scorers:
 
         if method == "SPICE":
-            score,scores = scorer.compute_score(ref_coref, hypo)
+            score,scores = scorer.compute_score(ref_coref, cand_coref)
             
             final_scores['SPICE_PRECISION'] = sum([s['All']['pr'] for s in scores]) / len(scores)
             final_scores['SPICE_RECALL'] = sum([s['All']['re'] for s in scores]) / len(scores)
@@ -107,16 +107,25 @@ def evaluate(get_scores=False,
             if sent != '':
                 ref_coref[i] += [sent]
 
+    cand_coref = {}
+    for i, caption in enumerate(raw_cand):
+        cand_coref[i] = []
+        caption = caption.strip().lower()
+        for sent in caption.split('.'):
+            if sent != '':
+                cand_coref[i] += [sent]
 
-
+    # print cand_coref[0]
+    
 
     # print cand
     # print ref
     # raw_input()
     
     # compute bleu score
-    final_scores, all_scores = score(ref, ref_coref, cand)
-    # final_scores = score(ref, ref_coref, cand)
+    
+    final_scores, all_scores = score(ref, ref_coref, cand, cand_coref)
+    # final_scores, all_scores = score(ref, ref_coref, cand)
     
     if repetition_penalty:
         n_repetitions = []
