@@ -7,7 +7,7 @@ import json
 import h5py
 import math
 # from util import load_paragraph
-
+ 
 class TrainingData():
     def __init__(self, args, classes_1600to282):
         
