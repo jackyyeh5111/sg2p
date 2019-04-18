@@ -24,8 +24,7 @@ def combineData(train_data, val_data, use_box_feats, use_attrs):
     train_data.size = len(train_data.captions)
 
     train_data.num_batch = int(train_data.size / train_data.batch_size)    
-
-
+ 
 class TrainingData():
     def __init__(self, args, classes_1600to282, mode):
         
@@ -139,7 +138,7 @@ class TrainingData():
                 i_triples = i_triples[:max_n_rels] 
 
             # attrs
-            attr_pad_idx = np.where(i_attrs_conf > attr_thres)
+            attr_pad_idx = np.where(i_attrs_conf < attr_thres)
             i_attr[attr_pad_idx] = padding_attr
 
             # shape of attr have to align with shape of objs 

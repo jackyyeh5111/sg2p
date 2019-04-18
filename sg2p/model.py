@@ -188,6 +188,7 @@ class Regions_Hierarchical():
                        max_n_objs,
                        max_n_rels,
                        use_attrs,
+                       spt_feats,
                        n_preds=50,
                        n_attrs=400,
                        embedding_dim=100,
@@ -226,6 +227,7 @@ class Regions_Hierarchical():
             self.max_n_rels = max_n_rels
             self.use_box_feats = use_box_feats
             self.use_attrs = use_attrs
+            self.spt_feats = spt_feats
 
             topic_dim = wordRNN_lstm_dim * 2
 
@@ -243,6 +245,13 @@ class Regions_Hierarchical():
             self.ctx2out = ctx2out
             self.alpha_c = alpha_c
 
+            if self.spt_feats and self.use_attrs:
+                num_boxes = max_n_objs * 2 + max_n_rels
+            elif self.spt_feats and not self.use_attrs:
+                num_boxes = max_n_objs + max_n_rels
+            else:
+                num_boxes = max_n_objs
+
 
             self.sentRNN = SentRNN(  sentRNN_lstm_dim,
                                      sentRNN_numlayer,
@@ -250,11 +259,7 @@ class Regions_Hierarchical():
                                      project_dim,
                                      self.D,
                                      topic_dim,
-                                     num_boxes= max_n_objs)
-
-
-            
-
+                                     num_boxes=num_boxes)
 
             self.sentRNN_lstm_dim = sentRNN_lstm_dim 
             self.topic_dim = topic_dim 
@@ -345,6 +350,7 @@ class Regions_Hierarchical():
                 'pooling': gconv_pooling,
                 'mlp_normalization': None,
                 'use_attrs': use_attrs,
+                'spt_feats': spt_feats,
               }
             self.gconv = GraphTripleConv(**gconv_kwargs)
 
@@ -400,28 +406,24 @@ class Regions_Hierarchical():
             attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
             # graph convolution 
-            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            obj_vecs, pred_vecs, attr_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            attr_vecs = attr_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
         else:
-            obj_vecs, pred_vecs = self.gconv('train', obj_vecs, pred_vecs, edges)
+            obj_vecs, pred_vecs, _ = self.gconv('train', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
 
         if self.use_box_feats:
             features = tf.concat([obj_vecs, box_feats], axis=2)
+        elif self.spt_feats:
+            features = tf.concat([obj_vecs, pred_vecs], axis=1)
+            if self.use_attrs:
+                features = tf.concat([features, attr_vecs], axis=1)
         else:
             features = obj_vecs
 
 
-        print obj_vecs
-        print tf.concat([obj_vecs, pred_vecs], axis=1)
-        # raw_input()
-        # features = obj_vecs
-        print features
-        
-        # features = tf.concat([obj_vecs, pred_vecs], axis=1)
-
-        # raw_input()
         # mask objs by 282
         # ----------------------------------------------------
 
@@ -533,23 +535,24 @@ class Regions_Hierarchical():
             attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
             # graph convolution 
-            obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            obj_vecs, pred_vecs, attr_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            attr_vecs = attr_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
         else:
-            obj_vecs, pred_vecs = self.gconv('test', obj_vecs, pred_vecs, edges)
+            obj_vecs, pred_vecs, _ = self.gconv('train', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
 
         if self.use_box_feats:
             features = tf.concat([obj_vecs, box_feats], axis=2)
+        elif self.spt_feats:
+            features = tf.concat([obj_vecs, pred_vecs], axis=1)
+            if self.use_attrs:
+                features = tf.concat([features, attr_vecs], axis=1)
         else:
             features = obj_vecs
 
         print obj_vecs
-
-        # features = obj_vecs
-        # features = tf.concat([obj_vecs, pred_vecs], axis=1)
-        
 
         # save the generated paragraph to list, here I named generated_sents
         generated_paragraph = []

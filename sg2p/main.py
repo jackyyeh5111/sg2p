@@ -21,6 +21,7 @@ def load_args():
     parser.add_argument("-gpu", dest='gpu_id', type=str, default='0')
     parser.add_argument("-use_box_feats", action='store_true', default=False)
     parser.add_argument("-use_attrs", action='store_true', default=False)
+    parser.add_argument("-spt_feats", action='store_true', default=False)
     parser.add_argument("-m", dest='mode', type=str, help="have three mode: 'train', 'infer', 'interact'.")
     parser.add_argument("-p", dest="process_name", type=str, help="process name")
     parser.add_argument("-model_name", type=str, default=None, 
@@ -158,6 +159,7 @@ def main():
                                   use_box_feats=args.use_box_feats,
                                   box_feats_dim=args.box_feats_dim if args.use_box_feats else 0,
                                   use_attrs=args.use_attrs,
+                                  spt_feats=args.spt_feats,
                                   n_objs=args.n_obj)
 
 
