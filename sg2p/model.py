@@ -98,8 +98,8 @@ class SentRNN():
 
             self.logistic = Dense(2, kernel_initializer=self.w_init.random_uniform)
         
-            self.fc1 = Dense(topic_dim, activation=tf.nn.relu, kernel_initializer=self.w_init.random_uniform, name='fc1')
-            self.fc2 = Dense(wordRNN_lstm_dim*2, activation=tf.nn.relu, kernel_initializer=self.w_init.random_uniform, name='fc2')
+            self.fc1 = Dense(topic_dim, activation=tf.nn.relu, kernel_initializer=self.w_init.xavier, name='fc1')
+            self.fc2 = Dense(wordRNN_lstm_dim*2, activation=tf.nn.relu, kernel_initializer=self.w_init.xavier, name='fc2')
            
     
     def _init_hidden_state(self, img_features, reuse=False):
@@ -168,9 +168,9 @@ class SentRNN():
 
         pred_stop = self.logistic(sent_output)
             
-        _hidden = tf.nn.relu( self.fc1(sent_output) )
+        _hidden = self.fc1(sent_output)
 
-        topic_vec = tf.nn.relu( self.fc2( _hidden ) )
+        topic_vec = self.fc2( _hidden )
 
         return pred_stop, topic_vec, context, alpha, (h, c)
 
@@ -193,9 +193,6 @@ class Regions_Hierarchical():
                        n_attrs=400,
                        embedding_dim=100,
                        box_feats_dim=2048,
-                       # pred_embed_dim=32,
-                       # obj_embed_dim=100,
-                       # gconv_dim=128,
                        gconv_hidden_dim=512,
                        gconv_pooling='avg',
                        gconv_num_layers=5,
