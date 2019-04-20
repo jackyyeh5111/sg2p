@@ -50,8 +50,11 @@ class Attention():
         features_proj = self.linear_feature(img_features)  # (batch_size, num_pixels, attention_dim)
         att = self.linear_hidden(decoder_hidden)  # (batch_size, attention_dim)
         
-        h_att = tf.nn.relu( features_proj + tf.expand_dims(att, 1)) # (N, L, D)
-        out_att = tf.reshape( self.full_att(tf.reshape(h_att, [-1, self.attention_dim])), [-1, self.num_boxes])   # (N, L)
+        # dot product
+        out_att = tf.reduce_sum( tf.multiply( features_proj, tf.expand_dims(att, 1) ), axis=2 ) # (N, num_pixels, 1)
+
+        # h_att = tf.nn.relu( features_proj + tf.expand_dims(att, 1)) # (N, L, D)
+        # out_att = tf.reshape( self.full_att(tf.reshape(h_att, [-1, self.attention_dim])), [-1, self.num_boxes])   # (N, L)
         alpha = self.softmax(out_att) # (batch_size, num_pixels)
 
         context = tf.reduce_sum(img_features * tf.expand_dims(alpha, 2), 1, name='context')   #(N, D)
