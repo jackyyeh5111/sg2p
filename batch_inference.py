@@ -55,10 +55,13 @@ candidate_paths = sorted(candidate_paths, key=lambda c_path: int(c_path.strip('.
 
 
 if opts.repetition_penalty:
-  o_path = os.path.join(results_path, 'new_score_rpenalty1.5.txt')
+  # o_path = os.path.join(results_path, 'new_score_rpenalty1.5.txt')
+  o_path = os.path.join(results_path, 'temp.txt')
 else:
   o_path = os.path.join(results_path, 'new_score.txt')
 
+best_score = 0
+best_epoch = 0
 with open(o_path, 'w', buffering=0) as f_score:
     for c_path in candidate_paths:
         epoch = int(c_path.strip('.txt').split('_')[-1])
@@ -73,6 +76,13 @@ with open(o_path, 'w', buffering=0) as f_score:
 
             print (msg)        
             f_score.write(msg + '\n')
+
+            current_score = final_scores['CIDEr'] + final_scores['SPICE']
+            if current_score > best_score:
+                best_score = current_score
+                best_epoch = epoch
+    
+    print ("best epoch: %d | best score: %f" % (best_epoch, best_score))
 
 # models = []
 # for pretrained_model in pretrained_models:

@@ -52,6 +52,71 @@ def score(ref, ref_coref, hypo, cand_coref):
 
     return final_scores, all_scores
     
+def get_num_repetitions(sg_per_sent_path = "../SPICE/coco-caption/pycocoevalcap/spice/sg_per_sent.txt", 
+                       S_max = 6):
+
+    total_rels = []
+    n_repetitions = []
+    with open(sg_per_sent_path, 'r') as f:
+        for i, line in enumerate(f.readlines()):
+
+            # entry level
+            if i % (S_max*2) == 0: # *2 means one line for rels, one line for (attr + obj)s
+
+                if i != 0:
+                    n_repetitions.append(repetition)
+
+                sg = {}
+                repetition = 0
+
+            # sentence level
+            if i % 2 == 0:
+                new_key = False
+                raw_rels = line.strip().split('|')[:-1] # final item is empty string
+                
+                # ex: truck, park on, side | side, of, street |
+
+                for raw_rel in raw_rels:
+                    sub, predicate, obj = raw_rel.split(',')
+
+                    for key in [raw_rel, sub, obj]:
+                        key = key.strip()
+                        try:
+                            if sg[key]:
+                                pass
+                        except:
+                            sg[key] = True
+                            new_key = True
+
+            else:
+                raw_attrs_objs = line.strip().split('|')[:-1] # final item is empty string
+                for raw_attrs_obj in raw_attrs_objs:
+                    # ex: truck & two,fedex,
+                    obj, attrs = raw_attrs_obj.split('&')
+                    attr_obj_list = [attr.strip() + ' ' + obj.strip() for attr in attrs.split(',')[:-1]]
+
+                    for key in attr_obj_list + [obj]:
+                        key = key.strip()
+                        try:
+                            if sg[key]:
+                                pass
+                        except:
+                            sg[key] = True
+                            new_key = True
+
+                if new_key == False:
+                    repetition += 1
+
+            # print sg
+            # print repetition
+            # raw_input()
+
+    # print repetition
+    n_repetitions.append(repetition)
+
+    # print n_repetitions
+
+    return n_repetitions 
 
 def evaluate(get_scores=False, 
              reference_path="data/reference.txt", 
@@ -128,31 +193,36 @@ def evaluate(get_scores=False,
     # final_scores, all_scores = score(ref, ref_coref, cand)
     
     if repetition_penalty:
-        n_repetitions = []
-        for i, caption in enumerate(raw_cand):
-            cand = {}
-            repetition = 0
-            caption = caption.strip().lower()
-            if caption != '':
-                captions = caption.split(' . ')
+        # n_repetitions = []
+        # for i, caption in enumerate(raw_cand):
+        #     cand = {}
+        #     repetition = 0
+        #     caption = caption.strip().lower()
+        #     if caption != '':
+        #         captions = caption.split(' . ')
                 
-                for j, caption in enumerate(captions):
-                    try:
-                        if cand[caption]: # check caption whether is a key
-                            repetition += 1
-                    except:
-                        cand[caption] = True
+        #         for j, caption in enumerate(captions):
+        #             try:
+        #                 if cand[caption]: # check caption whether is a key
+        #                     repetition += 1
+        #             except:
+        #                 cand[caption] = True
 
-            n_repetitions.append(repetition)
+        #     n_repetitions.append(repetition)
 
 
         # print n_repetitions[0]
         # print raw_cand[0]
 
+
+        n_repetitions = get_num_repetitions()
+        # print n_repetitions[:5]
+        # raw_input()
+
         all_scores['SPICE'] = [s['All']['f'] for s in all_scores['SPICE']]
 
         for i in range(len(all_scores['SPICE'])):
-            all_scores['SPICE'][i] = all_scores['SPICE'][i] - 0.015 * n_repetitions[i]
+            all_scores['SPICE'][i] = all_scores['SPICE'][i] - 0.015 * (n_repetitions[i]**2)
 
         final_scores['SPICE'] = sum(all_scores['SPICE']) / len(all_scores['SPICE'])
 
