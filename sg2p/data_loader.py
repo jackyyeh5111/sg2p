@@ -8,8 +8,12 @@ import h5py
 import math
 # from util import load_paragraph
 
-def combineData(train_data, val_data, use_box_feats, use_attrs):
+def combineData(train_data, val_data, args):
 
+    use_box_feats = args.use_box_feats
+    use_attrs = args.use_attrs
+    spt_feats = args.spt_feats
+    
     train_data.objs = np.concatenate((train_data.objs, val_data.objs), axis=0)
     train_data.triples = np.concatenate((train_data.triples, val_data.triples), axis=0)
     train_data.num_distribution = np.concatenate((train_data.num_distribution, val_data.num_distribution), axis=0)
@@ -17,6 +21,11 @@ def combineData(train_data, val_data, use_box_feats, use_attrs):
     
     if use_box_feats:
         train_data.box_feats = np.concatenate((train_data.box_feats, val_data.box_feats), axis=0)
+        if spt_feats:
+            train_data.rel_feats = np.concatenate((train_data.rel_feats, val_data.rel_feats), axis=0)
+
+    # if use_box_feats:
+    #     train_data.box_feats = np.concatenate((train_data.box_feats, val_data.box_feats), axis=0)
 
     if use_attrs:
         train_data.attrs = np.concatenate((train_data.attrs, val_data.attrs), axis=0)
@@ -35,19 +44,23 @@ class TrainingData():
         self.max_n_rels = args.max_n_rels
         self.use_box_feats = args.use_box_feats
         self.use_attrs = args.use_attrs
+        self.spt_feats = args.spt_feats
         self.max_n_attrs = args.max_n_attrs
         
         if mode == 'train':
             self.sg_path = args.path.train_sg_path
             self.box_feats_path = args.path.train_box_feats_path
+            self.rel_feats_path = args.path.train_rel_feats_path
             self.img_ids_path = args.path.train_imgs_ids_path
         if mode == 'val':
             self.sg_path = args.path.val_sg_path
             self.box_feats_path = args.path.val_box_feats_path
+            self.rel_feats_path = args.path.train_rel_feats_path
             self.img_ids_path = args.path.val_imgs_ids_path
         if mode == 'sample':
             self.sg_path = args.path.sample_sg_path
             self.box_feats_path = args.path.sample_box_feats_path
+            self.rel_feats_path = args.path.train_rel_feats_path
             self.img_ids_path = args.path.sample_imgs_ids_path
 
         
@@ -64,6 +77,9 @@ class TrainingData():
         
         if self.use_box_feats:
             self.box_feats = hickle.load(self.box_feats_path)
+            if self.spt_feats:
+                self.rel_feats = hickle.load(self.rel_feats_path)
+
 
         keep_entry = [i for i, n_obj in enumerate(self.n_objs) if n_obj>=10 and n_obj<=self.max_n_objs]
 
@@ -75,6 +91,12 @@ class TrainingData():
 
         if self.use_box_feats:
             self.box_feats = self.box_feats[keep_entry]
+            if self.spt_feats:
+                self.rel_feats = self.rel_feats[keep_entry]
+        
+        print 'rel_feats ok'
+
+
         if self.use_attrs:
             self.attrs = self.attrs[keep_entry]
 
@@ -191,6 +213,8 @@ class TrainingData():
 
         if self.use_box_feats:
             batch_data['box_feats'] = self.box_feats[self.pointer: self.pointer+self.batch_size]
+            if self.spt_feats:
+                batch_data['rel_feats'] = self.rel_feats[self.pointer: self.pointer+self.batch_size]
 
         if self.use_attrs:
             batch_data['attrs'] = self.attrs[self.pointer: self.pointer+self.batch_size]
@@ -216,8 +240,12 @@ class TrainingData():
 
         if self.use_box_feats:
             self.box_feats = self.box_feats[s]
+            if self.spt_feats:
+                self.rel_feats = self.rel_feats[s]
+
         if self.use_attrs:
             self.attrs = self.attrs[s]
+
 
 class TestData():
     def __init__(self, args, classes_1600to282):
@@ -231,7 +259,8 @@ class TestData():
         self.max_n_attrs = args.max_n_attrs
         self.use_box_feats = args.use_box_feats
         self.use_attrs = args.use_attrs
-
+        self.spt_feats = args.spt_feats
+        self.rel_feats_path = args.path.test_rel_feats_path
 
         # self.densecap_feats = self.load_data()
         self.objs, self.triples, self.n_objs, self.attrs = self.load_graphs(self.test_sg_path, 
@@ -243,6 +272,8 @@ class TestData():
 
         if self.use_box_feats:
             self.box_feats = hickle.load(self.box_feats_path)
+            if self.spt_feats:
+                self.rel_feats = hickle.load(self.rel_feats_path)
 
 
         self.size = len(self.triples)
@@ -344,6 +375,8 @@ class TestData():
 
         if self.use_box_feats:
             batch_data['box_feats'] = self.box_feats[self.pointer: self.pointer+self.batch_size]
+            if self.spt_feats:
+                batch_data['rel_feats'] = self.rel_feats[self.pointer: self.pointer+self.batch_size]
 
         self.pointer = self.pointer + self.batch_size
 

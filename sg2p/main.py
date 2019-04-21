@@ -134,7 +134,7 @@ class DataContainer():
             # pass
           self.train_data = TrainingData(args, self.classes_1600to282, mode='train')
           self.val_data = TrainingData(args, self.classes_1600to282, mode='val')
-          combineData(self.train_data, self.val_data, self.args.use_box_feats, self.args.use_attrs)
+          combineData(self.train_data, self.val_data, self.args)
 
           # self.train_data = TrainingData(args, self.classes_1600to282, mode='sample')
           self.val_data = TestData(args, self.classes_1600to282)
