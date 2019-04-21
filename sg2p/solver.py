@@ -34,6 +34,7 @@ class ParagraphSolver(object):
         self.dc = dc
         self.fixed_n_sent = self.args.fixed_n_sent
         self.use_attrs = self.args.use_attrs
+        self.spt_feats = self.args.spt_feats
 
         self.n_epoch = self.args.n_epochs
         self.batch_size = self.args.batch_size
@@ -140,6 +141,9 @@ class ParagraphSolver(object):
 
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
+                if self.spt_feats:
+                    feed_dict[self.model.rel_feats] = batch_data["rel_feats"]
+            
             
             if self.use_attrs:
                 feed_dict[self.model.attrs] = batch_data["attrs"]
@@ -220,6 +224,9 @@ class ParagraphSolver(object):
 
             if self.use_box_feats:
                 feed_dict[self.model.box_feats] = batch_data["box_feats"]
+                if self.spt_feats:
+                    feed_dict[self.model.rel_feats] = batch_data["rel_feats"]
+
 
             if self.use_attrs:
                 feed_dict[self.model.attrs] = batch_data["attrs"]
@@ -268,7 +275,7 @@ class ParagraphSolver(object):
     
         print ("start training from %d epoch" % self.pretrained_epoch)
         for epoch in range(self.n_epoch):
-
+            
             # skip epoch
             if epoch < self.pretrained_epoch:
                 continue

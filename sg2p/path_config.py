@@ -32,6 +32,11 @@ class PathConfig():
 		self.test_box_feats_path = self.__path('data/sg/resnet152_%d/box_features_test.hkl' % n_obj)
 		self.sample_box_feats_path = self.__path('data/sg/resnet152_%d/box_features_sample.hkl' % n_obj)
 
+		self.train_rel_feats_path = self.__path('data/sg/resnet152_%d/rel_features_train.hkl' % n_obj)
+		self.val_rel_feats_path = self.__path('data/sg/resnet152_%d/rel_features_val.hkl' % n_obj)
+		self.test_rel_feats_path = self.__path('data/sg/resnet152_%d/rel_features_test.hkl' % n_obj)
+		self.sample_rel_feats_path = self.__path('data/sg/resnet152_%d/rel_features_sample.hkl' % n_obj)
+
 		self.train_sg_path = self.__path('data/sg/resnet152_%d/sg2p_train.pkl' % n_obj)
 		self.val_sg_path = self.__path('data/sg/resnet152_%d/sg2p_val.pkl' % n_obj)
 		self.test_sg_path = self.__path('data/sg/resnet152_%d/sg2p_test.pkl' % n_obj)

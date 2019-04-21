@@ -302,6 +302,7 @@ class Regions_Hierarchical():
             # placeholder
             # self.densecap_feats = tf.placeholder(tf.float32, [batch_size, self.num_boxes, self.feats_dim])
             self.box_feats = tf.placeholder(tf.float32, [None, max_n_objs, box_feats_dim])
+            self.rel_feats = tf.placeholder(tf.float32, [None, max_n_rels, box_feats_dim])
 
             # receive the [continue:0, stop:1] lists
             # example: [0, 0, 0, 0, 1, 1], it means this paragraph has five sentences
@@ -383,6 +384,7 @@ class Regions_Hierarchical():
         attrs = self.attrs 
         captions = self.captions
         box_feats = self.box_feats
+        rel_feats = self.rel_feats
         batch_size = tf.shape(objs)[0]
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
@@ -412,13 +414,34 @@ class Regions_Hierarchical():
 
 
         if self.use_box_feats:
-            features = tf.concat([obj_vecs, box_feats], axis=2)
-        elif self.spt_feats:
+            obj_vecs = tf.concat([obj_vecs, box_feats], axis=2)
+            if self.spt_feats:
+                pred_vecs = tf.concat([pred_vecs, rel_feats], axis=2)                
+                if self.use_attrs:
+                    attr_vecs = tf.concat([attr_vecs, box_feats], axis=2)
+
+        if self.spt_feats:
             features = tf.concat([obj_vecs, pred_vecs], axis=1)
             if self.use_attrs:
                 features = tf.concat([features, attr_vecs], axis=1)
         else:
             features = obj_vecs
+
+
+        # if self.use_box_feats:
+        #     features = tf.concat([obj_vecs, box_feats], axis=2)
+
+        #     if self.spt_feats:
+        #         rel_features = tf.concat([pred_vecs, rel_feats], axis=2)                
+
+        
+        # elif self.spt_feats:
+        #     features = tf.concat([obj_vecs, pred_vecs], axis=1)
+        #     if self.use_attrs:
+        #         features = tf.concat([features, attr_vecs], axis=1)
+
+        # else:
+        #     features = obj_vecs
 
 
         # mask objs by 282
@@ -512,6 +535,7 @@ class Regions_Hierarchical():
         box_feats = self.box_feats
         attrs = self.attrs 
         captions = self.captions
+        rel_feats = self.rel_feats
         batch_size = tf.shape(objs)[0]
 
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
@@ -532,24 +556,38 @@ class Regions_Hierarchical():
             attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
             # graph convolution 
-            obj_vecs, pred_vecs, attr_vecs = self.gconv('train', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            obj_vecs, pred_vecs, attr_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
             attr_vecs = attr_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
         else:
-            obj_vecs, pred_vecs, _ = self.gconv('train', obj_vecs, pred_vecs, edges)
+            obj_vecs, pred_vecs, _ = self.gconv('test', obj_vecs, pred_vecs, edges)
 
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
 
 
         if self.use_box_feats:
-            features = tf.concat([obj_vecs, box_feats], axis=2)
-        elif self.spt_feats:
+            obj_vecs = tf.concat([obj_vecs, box_feats], axis=2)
+            if self.spt_feats:
+                pred_vecs = tf.concat([pred_vecs, rel_feats], axis=2)                
+                if self.use_attrs:
+                    attr_vecs = tf.concat([attr_vecs, box_feats], axis=2)
+
+        if self.spt_feats:
             features = tf.concat([obj_vecs, pred_vecs], axis=1)
             if self.use_attrs:
                 features = tf.concat([features, attr_vecs], axis=1)
         else:
             features = obj_vecs
 
-        print obj_vecs
+        # if self.use_box_feats:
+        #     features = tf.concat([obj_vecs, box_feats], axis=2)
+        # elif self.spt_feats:
+        #     features = tf.concat([obj_vecs, pred_vecs], axis=1)
+        #     if self.use_attrs:
+        #         features = tf.concat([features, attr_vecs], axis=1)
+        # else:
+        #     features = obj_vecs
+
+        # print obj_vecs
 
         # save the generated paragraph to list, here I named generated_sents
         generated_paragraph = []
