@@ -73,12 +73,13 @@ class GraphTripleConv():
     
     self.layer1 = Dense(hidden_dim, kernel_initializer=self.w_init.xavier)
     self.layer2 = Dense(2 * hidden_dim + output_dim, kernel_initializer=self.w_init.xavier)
+    self.layer3 = Dense(hidden_dim, kernel_initializer=self.w_init.xavier)
+    self.layer4 = Dense(output_dim, kernel_initializer=self.w_init.xavier)
 
     self.attr_layer1 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
     self.attr_layer2 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
-
-    self.layer3 = Dense(hidden_dim, kernel_initializer=self.w_init.xavier)
-    self.layer4 = Dense(output_dim, kernel_initializer=self.w_init.xavier)
+    self.attr_layer3 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
+    self.attr_layer4 = Dense(self.attr_hidden_dim, kernel_initializer=self.w_init.xavier)
 
     self.activation = tf.nn.relu
 
@@ -220,6 +221,7 @@ class GraphTripleConv():
       print obj_counts
       
 
+
       pooled_obj_vecs =  tf.cast(pooled_obj_vecs, tf.float32) / tf.reshape(obj_counts, (-1, 1))
 
     
@@ -240,22 +242,52 @@ class GraphTripleConv():
 
       cur_attr_vecs = tf.concat([tile_obj_vecs, attr_vecs], axis=3)
     
-      cur_attr_vecs = self.attr_layer1(cur_attr_vecs)
+      cur_attr_vecs = self.activation( self.attr_layer1(cur_attr_vecs) )
       if self.use_gcv_mlayer:
         cur_attr_vecs = self.middle_layer(mode, cur_attr_vecs)
       
-      cur_attr_vecs = self.attr_layer2(cur_attr_vecs)
+      cur_attr_vecs = self.activation( self.attr_layer2(cur_attr_vecs) )
+      if self.use_gcv_mlayer:
+        cur_attr_vecs = self.middle_layer(mode, cur_attr_vecs)
+      
       cur_attr_vecs = cur_attr_vecs * tf.expand_dims(attrs_mask, axis=3)
 
+      print "cur_attr_vecs", cur_attr_vecs # shape=(?, 51, 3, 512)
+      
+
+      # pooled_attr_vecs = cur_attr_vecs / tf.reshape(c, (-1, 1))
+
+      attrs_mask = tf.reduce_sum(attrs_mask, axis=2)
       pooled_attr_vecs = tf.reduce_mean(cur_attr_vecs, axis=2)
 
-      new_attr_vecs = pooled_attr_vecs
+      print 'attrs_mask', attrs_mask
+      print 'pooled_attr_vecs', pooled_attr_vecs
+
+      pooled_attr_vecs = tf.reshape(pooled_attr_vecs, (-1, self.hidden_dim))
+      attrs_count = tf.reshape(attrs_mask, (-1, 1))
+      attrs_count = tf.clip_by_value(attrs_count, clip_value_min=1, clip_value_max=100000)
+      
+      pooled_attr_vecs = pooled_attr_vecs / attrs_count
+      pooled_attr_vecs = tf.reshape(pooled_attr_vecs, (-1, O, self.hidden_dim))
+
+      print "pooled_attr_vecs", pooled_attr_vecs # shape=(?, 51, 3, 512)
+      # raw_input()
       
       if self.spt_feats:
         pooled_fuse_vecs = pooled_obj_vecs
       else:
         # fuse attrs, objs (include relation info)
         pooled_fuse_vecs = tf.concat([pooled_attr_vecs, pooled_obj_vecs], axis=2)
+
+
+      pooled_attr_vecs = self.activation( self.attr_layer3(pooled_attr_vecs) )
+      if self.use_gcv_mlayer:
+        pooled_attr_vecs = self.middle_layer(mode, pooled_attr_vecs)
+
+      pooled_attr_vecs = self.activation( self.attr_layer4(pooled_attr_vecs) )
+      if self.use_gcv_mlayer:
+        new_attr_vecs = self.middle_layer(mode, pooled_attr_vecs)
+            
 
     else: # use obj vecs only
       pooled_fuse_vecs = pooled_obj_vecs

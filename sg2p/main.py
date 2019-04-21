@@ -9,6 +9,11 @@ from path_config import PathConfig
 from util import *
 import os
 
+from numpy.random import seed
+seed(1)
+from tensorflow import set_random_seed
+set_random_seed(2)
+
 # ex: python main.py -m train -p test 
 # ex: python main.py -m train -p test -gpu 1
 
@@ -105,7 +110,7 @@ class DataContainer():
         with open(args.path.idx2word_path, 'r') as f:
             self.idx2word = json.load(f)
 
-        self.embed_matrix = np.load( args.path.embed_matrix_path )
+        self.embed_matrix = np.load( args.path.embed_matrix_path ) # GloVe
 
         self.idx2pred, self.classes_282 = loadMapDict(self.args.path.VG_SGG_dict)
 
