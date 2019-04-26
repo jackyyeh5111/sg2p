@@ -140,7 +140,7 @@ class DataContainer():
           self.val_data = TestData(args, self.classes_1600to282)
 
         elif args.mode == "infer":
-          self.test_data = TestData(batch_size=args.test_batch_size)
+          self.test_data = TestData(args, self.classes_1600to282)
         
 
 def main():

@@ -85,13 +85,13 @@ class ParagraphSolver(object):
             os.makedirs(self.result_path)
 
 
-    def init_session(self, max_to_keep=20):
+    def init_session(self):
         
         sess = tf.Session(config=tf_config)
         init = tf.global_variables_initializer()
         sess.run(init)
 
-        saver = tf.train.Saver(max_to_keep=max_to_keep)
+        saver = tf.train.Saver()
 
         if self.pretrained_model is not None:
             print "Start training with pretrained Model.."
@@ -207,8 +207,14 @@ class ParagraphSolver(object):
         print (msg)
         f_log.write(msg + '\n')
 
-    def _run_validate(self, sampled_paragraphs, pred_re, output_path):
-        val_data = self.dc.val_data
+    def _run_validate(self, sampled_paragraphs, pred_re, output_path, mode='val'):
+        
+        assert mode in ['val', 'test']
+
+        if mode == 'val':
+            val_data = self.dc.val_data
+        elif mode == 'test':
+            val_data = self.dc.test_data
 
         # validation per epoch
         val_data.reset_pointer()
@@ -320,77 +326,31 @@ class ParagraphSolver(object):
 
     def inference(self):
 
-        idx2word = self.dc.idx2word
-        test_data = self.dc.test_data
-
         with tf.variable_scope(tf.get_variable_scope()):
             sampled_paragraphs, pred_re = self.model.build_sampler(reuse=False)
 
-        sess, _ = self.init_session()
+        self.sess, _ = self.init_session()
 
         # start inference
         start_time = time.time()        
-        print "start inference"
+        print "--- start inference ---"
         totol_paragraphs = []
         infered_paragraph = 0
         total_max_pred_words = []
 
+        epoch = int(self.pretrained_model.split('-')[-1])
+
+        # f_score = open(os.path.join(self.result_path, 'score_modify.txt'), 'a', buffering=0)
+
+        output_path = os.path.join( self.result_path, "infer_" + str(epoch) + ".txt")
+        self._run_validate(sampled_paragraphs, pred_re, output_path, mode='test')
+        final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
         
-        if self.ref_test_sents == True:
-            n_test_data_sents_path = self.config.n_test_data_sents_path 
-            n_test_data_sents = hickle.load(n_test_data_sents_path)
+        msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" 
+                % (epoch-1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+                final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr']))
 
-        for i in xrange(test_data.num_batch):
-            batch_data = test_data.next_batch()
+        print (msg)        
+        # f_score.write(msg + '\n')
 
-            feed_dict = {
-                 self.model.densecap_feats: batch_data["densecap_feats"],
-            }
-
-            _sampled_paragraphs, _pred = sess.run([sampled_paragraphs, pred_re], feed_dict)
-            
-            
-            infer_paragraphs = decode_paragraphs(
-                _sampled_paragraphs, _pred, idx2word, 
-                fixed_n_sent=self.fixed_n_sent, 
-                n_test_data_sents=n_test_data_sents[i*self.test_batch_size:(i+1)*self.test_batch_size] if self.ref_test_sents==True else None)
-
-
-            totol_paragraphs.extend(infer_paragraphs)
-
-            # batch_max_pred_words = get_max_pred_words(_total_pred_labels, 20, idx2word)
-            # total_max_pred_words.extend(batch_max_pred_words)
-            # for i in xrange(10):
-            #     print batch_max_pred_words[i]
-                
-            # raw_input()
-            infered_paragraph += len(batch_data["densecap_feats"])
-            print "%d paragraph have been infered" % infered_paragraph
-
-        if self.fixed_n_sent:
-            output_path = os.path.join( self.result_path, self.pretrained_model + "_fixed_n_sent")
-            output_score_path = os.path.join( self.result_path, 'score' + "_fixed_n_sent")
-        else:
-            output_path = os.path.join( self.result_path, self.pretrained_model)
-            output_score_path = os.path.join( self.result_path, 'score')
-
-        output_paragraphs(totol_paragraphs, output_path)
-        # output_path_max_pred_words = os.path.join( self.result_path, self.pretrained_model + "_pred_words")
-        # output_max_pred_words(total_max_pred_words, output_path_max_pred_words) 
-
-        final_scores = evaluate(get_scores=True, reference_path="../data/reference.txt", candidate_path=output_path)
-
-        # output score
-        with open(output_score_path, 'a') as f:
-            model_name = int(self.pretrained_model.split('-')[1])
-            msg2 = "model: %d ==> Bleu_1: %.4f, Bleu_2: %.4f, Bleu_3: %.4f, Bleu_4: %.4f, METEOR: %.4f, CIDEr: %.4f" \
-                        % (model_name, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
-                        final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr'])
-            print msg2
-            f.write(msg2 + '\n')
-
-        print "Time cost: " + str(time.time()-start_time)
-
-
-
-
+        # self._print_scores(final_scores, epoch-1, f_score)

@@ -267,7 +267,6 @@ class TestData():
                                                                 classes_1600to282, 
                                                                 self.max_n_objs, 
                                                                 self.max_n_rels,
-                                                                self.max_n_rels,
                                                                 self.max_n_attrs)
 
         if self.use_box_feats:
@@ -333,8 +332,9 @@ class TestData():
             else:
                 i_triples = i_triples[:max_n_rels] 
 
+
             # attrs
-            attr_pad_idx = np.where(i_attrs_conf > attr_thres)
+            attr_pad_idx = np.where(i_attrs_conf < attr_thres)
             i_attr[attr_pad_idx] = padding_attr
 
             # shape of attr have to align with shape of objs 
