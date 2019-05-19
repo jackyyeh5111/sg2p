@@ -467,8 +467,6 @@ class Regions_Hierarchical():
 
                 pred_stop, topic_vec, context, alpha, sent_hidden_state = self.sentRNN(features, sent_hidden_state, mode='train', reuse=(i!=0))
 
-                # print alpha.shape #(B, 250)
-                
                 # with tf.variable_scope('sent_LSTM', reuse=reuse or (i!=0)):
                 #     _, (c, h) = self.sent_LSTM(inputs=context, state=[c, h])
                 
@@ -543,27 +541,51 @@ class Regions_Hierarchical():
         captions_mask = tf.to_float(tf.not_equal(captions, self.pad_idx))
         captions_length = tf.reduce_sum(captions_mask, 2)
         sents_mask = tf.to_float(tf.not_equal(self.num_distribution, 0))
-
-        # tf.split(triples, [2, 1], axis=2)
+        
         edges, p =  triples[:, :, :2], triples[:, :, 2]  
+
+        # mask
+        obj_mask = tf.expand_dims(tf.to_float(tf.not_equal(objs, 0)), 2)
+        pred_mask = tf.expand_dims(tf.to_float(tf.not_equal(p, 0)), 2)
 
         obj_vecs = tf.nn.embedding_lookup(self.obj_embeddings, objs)
         pred_vecs = tf.nn.embedding_lookup(self.pred_embeddings, p)
-
+        
         if self.use_attrs:
             attr_vecs = tf.nn.embedding_lookup(self.attr_embeddings, attrs) 
+            attr_mask = tf.expand_dims(tf.to_float(tf.not_equal(attrs, 400)), 3)
+            attr_vecs = attr_vecs * attr_mask
+
 
             # build attrs_mask
             padding_attr = 400
             attrs_mask = tf.to_float(tf.not_equal(attrs, padding_attr))
 
             # graph convolution 
-            obj_vecs, pred_vecs, attr_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            obj_vecs, pred_vecs, attr_vecs, temp_new_s_vecs = self.gconv('test', obj_vecs, pred_vecs, edges, attr_vecs, attrs_mask)
+            
+            # attr_vecs = attr_vecs * obj_mask
+
             attr_vecs = attr_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
+
         else:
             obj_vecs, pred_vecs, _ = self.gconv('test', obj_vecs, pred_vecs, edges)
 
+        
+        # obj_vecs = obj_vecs * obj_mask
+        # pred_vecs = pred_vecs * pred_mask
+        
         obj_vecs = obj_vecs[:, :self.max_n_objs] # last idx is padding, ignore it!
+        
+        
+
+
+
+
+        print 'obj_vecs.shape'
+        print obj_vecs.shape
+        # temp_obj_vecs = obj_vecs
+        temp_obj_vecs = pred_vecs
 
 
         if self.use_box_feats:
@@ -661,11 +683,12 @@ class Regions_Hierarchical():
 
         generated_paragraph = tf.transpose(generated_paragraph, perm=[2, 0, 1]) # [batch_size, S_max, N_max]
         pred_re = tf.transpose(pred_re, perm=[1, 0, 2]) # [batch_size, S_max, N_max]
+        
         alpha_list = tf.transpose(alpha_list, perm=[1, 0, 2]) # [batch_size, S_max, N_max]
         
         print alpha_list
 
-        return generated_paragraph, pred_re, alpha_list
+        return generated_paragraph, pred_re, alpha_list, temp_obj_vecs
 
 
 

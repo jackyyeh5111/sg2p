@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 import time
-import pickle
 import os
 # import hickle
 # from scipy import ndimage
@@ -11,6 +10,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__))) # for batch inference
 from evaluate import evaluate
 from data_loader import TrainingData
 from tqdm import tqdm
+import pickle
 import tensorflow.contrib.slim as slim
 # from bleu import evaluate
 
@@ -208,7 +208,7 @@ class ParagraphSolver(object):
         print (msg)
         f_log.write(msg + '\n')
 
-    def _run_validate(self, sampled_paragraphs, pred_re, alphas, output_path, mode='val'):
+    def _run_validate(self, sampled_paragraphs, pred_re, alphas, output_path, temp_obj_vecs, mode='val'):
         
         assert mode in ['val', 'test']
 
@@ -221,7 +221,6 @@ class ParagraphSolver(object):
         val_data.reset_pointer()
 
         totol_paragraphs = []
-
         output_alphas = np.zeros((2489, 6, 250))
         for i in tqdm(range(val_data.num_batch)):
            
@@ -241,8 +240,16 @@ class ParagraphSolver(object):
                 feed_dict[self.model.attrs] = batch_data["attrs"]
 
             
-            _sampled_paragraphs, _pred, _alphas = self.sess.run([sampled_paragraphs, pred_re, alphas], feed_dict)
-                
+            _temp_obj_vecs, _sampled_paragraphs, _pred, _alphas = self.sess.run([temp_obj_vecs, sampled_paragraphs, pred_re, alphas], feed_dict)
+            
+            # print _temp_obj_vecs.shape
+            # print _temp_obj_vecs[0]
+            # print '-' * 5 + '\n'
+            # print _temp_obj_vecs[0][0]
+            # print '-' * 5 + '\n'
+            # print _temp_obj_vecs[0][140]
+            # raw_input()
+
             print ("_alphas.shape", _alphas.shape)
             output_alphas[i*256:i*256+len(_alphas)] = _alphas
 
@@ -250,7 +257,6 @@ class ParagraphSolver(object):
             totol_paragraphs.extend(val_paragraphs)
             
         output_paragraphs(totol_paragraphs, output_path)
-
 
         alpha_path = os.path.join( self.result_path, "alphas.pkl")
         with open(alpha_path, 'w') as f:
@@ -275,7 +281,7 @@ class ParagraphSolver(object):
         
         with tf.variable_scope(tf.get_variable_scope()):
             loss, loss_sent, loss_word = self.model.build_model(S_max=6)
-            sampled_paragraphs, pred_re, alphas = self.model.build_sampler(reuse=True)
+            sampled_paragraphs, pred_re = self.model.build_sampler(reuse=True)
         
         train_op, grads_and_vars = self.backprop(loss)
 
@@ -293,7 +299,7 @@ class ParagraphSolver(object):
     
         print ("start training from %d epoch" % self.pretrained_epoch)
         for epoch in range(self.n_epoch):
-
+            
             # skip epoch
             if epoch < self.pretrained_epoch:
                 continue
@@ -310,7 +316,7 @@ class ParagraphSolver(object):
             if (epoch+1) % self.log_every == 0:
 
                 output_path = os.path.join( self.result_path, "val_candidate_" + str(epoch+1) + ".txt")
-                self._run_validate(sampled_paragraphs, pred_re, alphas, output_path)
+                self._run_validate(sampled_paragraphs, pred_re, output_path)
                 final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
                 self._print_scores(final_scores, epoch, f_score)
 
@@ -339,7 +345,7 @@ class ParagraphSolver(object):
     def inference(self):
 
         with tf.variable_scope(tf.get_variable_scope()):
-            sampled_paragraphs, pred_re, alphas = self.model.build_sampler(reuse=False)
+            sampled_paragraphs, pred_re, alphas, temp_obj_vecs = self.model.build_sampler(reuse=False)
 
         self.sess, _ = self.init_session()
 
@@ -353,16 +359,16 @@ class ParagraphSolver(object):
         epoch = int(self.pretrained_model.split('-')[-1])
 
         # f_score = open(os.path.join(self.result_path, 'score_modify.txt'), 'a', buffering=0)
-
-        output_path = os.path.join( self.result_path, "infer_" + str(epoch) + ".txt")
-        self._run_validate(sampled_paragraphs, pred_re, alphas, output_path, mode='test')
-        final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
+        output_path = '/2t/jackyyeh/neural-motifs/vis/data/demo/result_demo.txt'
+        # output_path = os.path.join( self.result_path, "infer_" + str(epoch) + ".txt")
+        self._run_validate(sampled_paragraphs, pred_re, alphas, output_path, temp_obj_vecs, mode='test')
+        # final_scores = evaluate(get_scores=True, reference_path=self.args.path.reference_path, candidate_path=output_path)
         
-        msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" 
-                % (epoch-1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
-                final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr']))
+        # msg = ("epoch: %d ==> Bleu_1: %f, Bleu_2: %f, Bleu_3: %f, Bleu_4: %f, METEOR: %f, CIDEr: %f" 
+        #         % (epoch-1, final_scores['Bleu_1'], final_scores['Bleu_2'], final_scores['Bleu_3'],
+        #         final_scores['Bleu_4'], final_scores['METEOR'], final_scores['CIDEr']))
 
-        print (msg)        
+        # print (msg)        
         # f_score.write(msg + '\n')
 
         # self._print_scores(final_scores, epoch-1, f_score)
